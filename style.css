@@ -533,10 +533,10 @@ main {
 .fund-stats .val { font-size: 12px; }
 .fund-stats .hl { background: color-mix(in srgb, var(--neon-yellow) 10%, transparent); }
 .fund-stats .hl .val { color: var(--neon-yellow); font-size: 13px; font-weight: 800; }
-.fund-stats .pnl-pos { background: color-mix(in srgb, var(--neon-red) 12%, transparent); }
-.fund-stats .pnl-pos .val { color: var(--neon-red); font-weight: 800; }
-.fund-stats .pnl-neg { background: color-mix(in srgb, var(--neon-green) 12%, transparent); }
-.fund-stats .pnl-neg .val { color: var(--neon-green); font-weight: 800; }
+.fund-stats .pnl-pos { background: color-mix(in srgb, var(--neon-green) 12%, transparent); }
+.fund-stats .pnl-pos .val { color: var(--neon-green); font-weight: 800; }
+.fund-stats .pnl-neg { background: color-mix(in srgb, var(--neon-red) 12%, transparent); }
+.fund-stats .pnl-neg .val { color: var(--neon-red); font-weight: 800; }
 
 .fund-stats-2 { grid-template-columns: repeat(2, 1fr) !important; }
 .fund-stats-5 { grid-template-columns: repeat(5, 1fr) !important; font-size: 9px; }
@@ -1547,15 +1547,3 @@ body:has(#pwBg)::before { display: none !important; }
 .param-input:focus { background: rgba(0, 240, 255, 0.08) !important; border-radius: 4px; }
 .param-input::-webkit-outer-spin-button, .param-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .param-row.highlight .param-input { color: #ff8a9a; }
-
-/* 网格交易红买绿卖 */
-.buy-badge {
-  display: inline-block; padding: 1px 7px; border-radius: 3px;
-  font-size: 10px; font-weight: 600;
-  background: rgba(255,71,87,0.15); color: #ff4757;
-}
-.sell-badge {
-  display: inline-block; padding: 1px 7px; border-radius: 3px;
-  font-size: 10px; font-weight: 600;
-  background: rgba(46,213,115,0.15); color: #2ed573;
-}
