@@ -8,11 +8,32 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=neon1">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
+<header>
+  <h1 id="dateTitle">2026/7/23</h1>
+  <!-- 滚动字幕条占中间 -->
+  <div class="scroll-marquee">
+    <div class="scroll-track">
+      <span>别人恐惧我贪婪，别人贪婪我恐惧</span>
+      <span>别人恐惧我贪婪，别人贪婪我恐惧</span>
+      <span>别人恐惧我贪婪，别人贪婪我恐惧</span>
+    </div>
+  </div>
+  <!-- 3个圆形按钮靠右 -->
+  <div class="header-btns">
+    <button id="saveBtn" class="h-btn" title="保存">💾</button>
+    <button id="excelBtn" class="h-btn" title="存表">📊</button>
+    <button id="exportBtn" class="h-btn" title="简表">📋</button>
+  </div>
+</header>
+<main id="funds"></main>
+<section class="total" id="total"></section>
+<footer>💡 蓝字可改｜档位金额按 Excel 公式 M1×1.1^(k-1) 计算｜容差 0.01</footer>
 <script src="xlsx.full.min.js"></script>
 <script src="data.js"></script>
 <script src="app.js"></script>
+
 </body>
 </html>
