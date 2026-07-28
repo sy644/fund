@@ -620,6 +620,7 @@ main {
 /* ============ 圆环完成度 (参考图大圆环) ============ */
 .ring-section {
   position: relative;
+  z-index:2;
   min-height: 200px;
   padding: 12px 4px 12px 4px;
   background: transparent !important;
