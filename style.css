@@ -1503,7 +1503,7 @@ body:has(#pwBg)::before { display: none !important; }
 }
 .param-list {
   display: grid;
-  grid-template-columns: 1.8fr 2fr;
+  grid-template-columns: 2fr 2fr;
   padding: 0;
 }
 .param-row {
