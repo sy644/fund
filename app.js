@@ -147,7 +147,7 @@ async function setPassword() {
   alert('✓ 密码已修改');
 }
 window.setPassword = setPassword;
-
+const FUNDS_INIT = [];  
 let state;
 try {
   const s = localStorage.getItem('funds');
