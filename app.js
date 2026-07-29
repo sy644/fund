@@ -204,7 +204,7 @@ for (const f of state) {
   if (r && r.nav) {
     f.price = r.nav;
     f.priceDate = r.date || new Date().toISOString().split('T')[0];
-    f._manualPrice = false; 👈 清除锁定标记，保持自动状态
+    f._manualPrice = false; // 👈 清除锁定标记，保持自动状态
   } else if (cache[f.code]) {
     const c = cache[f.code];
     const last = Array.isArray(c) ? c[c.length-1] : c;
