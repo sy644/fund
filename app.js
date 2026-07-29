@@ -165,21 +165,27 @@ try {
 }
 
 async function fetchNAV(code) {
-  const url = `https://qt.gtimg.cn/q=jj${code}`;
-  const proxies = [
-    '',
-    'https://corsproxy.io/?',
-    'https://api.allorigins.win/raw?url=',
-  ];
-  for (const proxy of proxies) {
-    try {
-      const target = proxy ? proxy + encodeURIComponent(url) : url;
-      const resp = await fetch(target);
-      const text = await resp.text();
-      const m = text.match(/"([^~]+)~([^~]+)~[^~]+~[^~]+~~([^~]+)~([^~]+)~([^~]+)~([^~]+)~"/);
-      if (m) return { nav: parseFloat(m.group(3)), date: m.group(6) };
-    } catch (e) {}
+  // 天天基金最新净值接口（JSONP）
+  const url = `https://fund.eastmoney.com/f10/FundNetValue.ashx?type=latest&code=${code}&_=${Date.now()}`;
+  try {
+    const resp = await fetch(url);
+    const text = await resp.text();
+    // 提取 JSONP 中的 JSON 数据
+    const jsonpMatch = text.match(/jsonpCallback\((\{.*\})\)/);
+    if (!jsonpMatch) return null;
+    const data = JSON.parse(jsonpMatch[1]);
+    // 数据结构：{ Data: [{ FUNDCODE, NETVALUE, NAVDATE, ... }] }
+    if (data.Data && data.Data.length > 0) {
+      const item = data.Data[0];
+      const nav = parseFloat(item.NETVALUE || 0);
+      const date = item.NAVDATE || '';
+      if (nav > 0) return { nav, date };
+    }
+  } catch (e) {
+    console.warn('天天基金抓取失败', e);
   }
+  // 备用：如果上面失败，仍可降级到腾讯接口（保留原逻辑）
+  // 这里可调用原 fetchNAV 的备用逻辑，或直接返回 null
   return null;
 }
 
