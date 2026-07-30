@@ -733,29 +733,31 @@ function updateCardValues(i) {
     el.querySelector('.nbr-amt').textContent = Math.round(n.amt);
     el.classList.toggle('cur', n.tier === currentTier);
   });
-  const ringAmt = card.querySelector('.ring-amount');
   const ringFoot = card.querySelector('.ring-foot');
-  const ringPct = card.querySelector('.ring-pct');
-  const ringFill = card.querySelector('.ring-fill-circle');
-  if (ringAmt) ringAmt.textContent = Math.round(invested).toLocaleString() + ' / ' + f.target.toLocaleString();
-  if (ringFoot) ringFoot.textContent = '剩余 ' + Math.max(0, f.target-invested).toLocaleString();
-  if (ringPct) ringPct.textContent = (prog*100).toFixed(0) + '%';
-  if (ringFill) {
-    const C = 2 * Math.PI * 86;
-    const pct = Math.min(1, prog);
-    ringFill.setAttribute('stroke-dasharray', (C*pct).toFixed(1) + ' ' + C.toFixed(1));
-  }
-  const stats = card.querySelectorAll('.fund-stats > div .val');
-  if (stats[0]) stats[0].textContent = Math.round((f.price||0)*shares).toLocaleString();
-  if (stats[1]) stats[1].textContent = Math.round(shares).toLocaleString();
-  if (stats[2]) stats[2].textContent = shares > 0 ? (invested/shares).toFixed(4) : '-';
-  if (stats[3]) { stats[3].textContent = (pnl>=0?'+':'')+Math.round(pnl).toLocaleString(); stats[3].parentElement.className = pnlClass; }
-  if (stats[4]) { stats[4].textContent = invested > 0 ? ((pnl/invested*100).toFixed(1) + '%') : '-'; stats[4].parentElement.className = pnlClass; }
-  const tfoot = card.querySelector('.buy-table tfoot td:nth-child(4) b');
-  const tfoot2 = card.querySelector('.buy-table tfoot td:nth-child(5) b');
-  if (tfoot) tfoot.textContent = Math.round(invested).toLocaleString();
-  if (tfoot2) tfoot2.textContent = Math.round(shares).toLocaleString();
+const ringPct = card.querySelector('.ring-pct');
+const ringFill = card.querySelector('.ring-fill');   // 注意类名是 ring-fill
+if (ringFoot) ringFoot.textContent = '剩余 ' + Math.max(0, f.target-invested).toLocaleString();
+if (ringPct) ringPct.textContent = (prog*100).toFixed(0) + '%';
+if (ringFill) {
+  const C = 2 * Math.PI * 86;
+  const pct = Math.min(1, prog);
+  ringFill.setAttribute('stroke-dasharray', (C*pct).toFixed(1) + ' ' + C.toFixed(1));
 }
+  const stats = card.querySelectorAll('.hold-cell .hold-val');
+if (stats[0]) stats[0].textContent = Math.round((f.price||0)*shares).toLocaleString();
+if (stats[1]) stats[1].textContent = Math.round(shares).toLocaleString();
+if (stats[2]) stats[2].textContent = shares > 0 ? (invested/shares).toFixed(4) : '-';
+if (stats[3]) {
+  stats[3].textContent = (pnl>=0?'+':'') + Math.round(pnl).toLocaleString();
+  stats[3].parentElement.className = pnlClass;
+}
+if (stats[4]) {
+  stats[4].textContent = invested > 0 ? ((pnl/invested*100).toFixed(2) + '%') : '-';
+  stats[4].parentElement.className = pnlClass;
+}
+const tfoot = card.querySelector('.buy-table tfoot td:nth-child(3) b');
+if (tfoot) tfoot.textContent = Math.round(invested).toLocaleString();
+// 删除 tfoot2 相关代码（因为表格中没有显示份额）
 
 function renderFund(f, i) {
   const { tier, currentAmt, currentTrigger, currentTier, currentIsBuy, neighbors } = calcCurrent(f);
