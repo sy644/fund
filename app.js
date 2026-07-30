@@ -1362,7 +1362,7 @@ function buildTierTable(f) {
 function calcTier(f) {
   const { price, basePrice, step } = f;
   if (!price) return { tier: 0, currentAmt: 0, dropPct: 0 };
-  const raw = (price - basePrice) / basePrice / step;
+  const raw = (price - basePrice). / basePrice / step;
   const rawFloor = Math.floor(raw);
   const rawCeil = Math.ceil(raw);
   const rawRound = Math.round(raw);
