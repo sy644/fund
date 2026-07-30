@@ -1,3 +1,4 @@
+
 // === 账户+密码保护 ===
 
 // 立即移除部署平台注入的水印浮窗
@@ -146,23 +147,18 @@ async function setPassword() {
   alert('✓ 密码已修改');
 }
 window.setPassword = setPassword;
-
+const FUNDS_INIT = [];  
 let state;
 try {
   const s = localStorage.getItem('funds');
   state = s ? JSON.parse(s) : JSON.parse(JSON.stringify(FUNDS_INIT));
-  // 密码保护
-  checkAccess().then(ok => {
-    if (ok) { 
-      render(); 
-      startAutoRefresh();
-    }
-  });
+  // 直接进入，不再经过密码检查
+  render(); 
+  startAutoRefresh();
 } catch(e) {
   document.getElementById('funds').innerHTML = '<pre style="color:red;padding:20px">STATE INIT ERROR: ' + e.message + ' | FUNDS_INIT: ' + (typeof FUNDS_INIT) + '</pre>';
   throw e;
 }
-
 async function fetchNAV(code) {
   // 天天基金最新净值接口（JSONP）
   const url = `https://fund.eastmoney.com/f10/FundNetValue.ashx?type=latest&code=${code}&_=${Date.now()}`;
@@ -201,7 +197,6 @@ for (const f of state) {
   let r = null;
   try { r = await fetchNAV(f.code); } catch(e) {}
   if (r && r.nav) {
-    // 抓取成功 → 强制覆盖，并且清除手动锁定标记（防止其他地方干扰）
     f.price = r.nav;
     f.priceDate = r.date || new Date().toISOString().split('T')[0];
     f._manualPrice = false; // 👈 清除锁定标记，保持自动状态
@@ -972,14 +967,12 @@ window.addEventListener('pageshow', e => {
 
 document.getElementById('exportBtn')?.addEventListener('click', showExportModal);
 let autoRefreshTimer;
-render();
-startAutoRefresh();
+
 
 function startAutoRefresh() {
   if (autoRefreshTimer) return;
   setTimeout(() => {
     refreshAll();
-    document.getElementById('autoBadge').classList.add('on');
   }, 5000);
   autoRefreshTimer = setInterval(refreshAll, 5 * 60 * 1000);
 }
