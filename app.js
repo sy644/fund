@@ -1,4 +1,4 @@
-// === 已移除登录/密码保护相关代码 ===
+// === 凌晨三点已移除登录/密码保护相关代码 ===
 
 // 全局错误兜底 - 避免黑屏静默失败
 window.addEventListener('error', e => {
@@ -24,11 +24,11 @@ try {
   // 优先用 data.js 里的 FUNDS_INIT, 否则空数组
   const initSource = (typeof FUNDS_INIT !== 'undefined') ? FUNDS_INIT : DEFAULT_INIT;
   const s = localStorage.getItem('funds');
-  state = s ? JSON.parse(s) : JSON.parse(JSON.stringify(initSource));
+  state = s ? JSON.parse(s) : JSON.parse(JSON.stringify(initSource);
   // 数据迁移: 旧 buys 缺 type 字段, 负数 amount 自动归类为卖出
-  if (Array.isArray(state)) {
+  if (Array.isArray(state) {
     state.forEach(f => {
-      if (Array.isArray(f.buys)) {
+      if (Array.isArray(f.buys) {
         f.buys.forEach(b => {
           if (!b.type) b.type = (b.amount < 0) ? 'sell' : 'buy';
         });
@@ -66,7 +66,7 @@ async function fetchNAV(code) {
     const r2 = await fetch(url2);
     const t2 = await r2.text();
     // 格式: v_jj<code>="1~基金名~基金代码~最新净值~日期~...~涨跌幅~...";
-    const m2 = t2.match(new RegExp('="' + '([^"]+)"'));
+    const m2 = t2.match(new RegExp('="' + '([^"]+)"');
     if (m2) {
       const parts = m2[1].split('~');
       // parts[3] = 净值, parts[4] = 日期 (YYYYMMDD)
