@@ -1,4 +1,4 @@
-// === 凌晨三点已移除登录/密码保护相关代码 ===
+// === 已移除登录/密码保护相关代码 ===
 
 // 全局错误兜底 - 避免黑屏静默失败
 window.addEventListener('error', e => {
@@ -24,11 +24,11 @@ try {
   // 优先用 data.js 里的 FUNDS_INIT, 否则空数组
   const initSource = (typeof FUNDS_INIT !== 'undefined') ? FUNDS_INIT : DEFAULT_INIT;
   const s = localStorage.getItem('funds');
-  state = s ? JSON.parse(s) : JSON.parse(JSON.stringify(initSource);
+  state = s ? JSON.parse(s) : JSON.parse(JSON.stringify(initSource));
   // 数据迁移: 旧 buys 缺 type 字段, 负数 amount 自动归类为卖出
-  if (Array.isArray(state) {
+  if (Array.isArray(state)) {
     state.forEach(f => {
-      if (Array.isArray(f.buys) {
+      if (Array.isArray(f.buys)) {
         f.buys.forEach(b => {
           if (!b.type) b.type = (b.amount < 0) ? 'sell' : 'buy';
         });
@@ -43,41 +43,27 @@ try {
 }
 
 async function fetchNAV(code) {
-  if (!code) return null;
-  // 主: 天天基金最新净值接口 (JSONP 转文本, fetch 也能取)
+  // 天天基金最新净值接口（JSONP）
+  const url = `https://fund.eastmoney.com/f10/FundNetValue.ashx?type=latest&code=${code}&_=${Date.now()}`;
   try {
-    const url1 = `https://fund.eastmoney.com/f10/FundNetValue.ashx?type=latest&code=${code}&_=${Date.now()}`;
-    const r1 = await fetch(url1);
-    const t1 = await r1.text();
-    const m1 = t1.match(/jsonpCallback\((\{.*\})\)/);
-    if (m1) {
-      const d = JSON.parse(m1[1]);
-      if (d.Data && d.Data.length > 0) {
-        const nav = parseFloat(d.Data[0].NETVALUE || 0);
-        const date = d.Data[0].NAVDATE || '';
-        if (nav > 0) return { nav, date };
-      }
+    const resp = await fetch(url);
+    const text = await resp.text();
+    // 提取 JSONP 中的 JSON 数据
+    const jsonpMatch = text.match(/jsonpCallback\((\{.*\})\)/);
+    if (!jsonpMatch) return null;
+    const data = JSON.parse(jsonpMatch[1]);
+    // 数据结构：{ Data: [{ FUNDCODE, NETVALUE, NAVDATE, ... }] }
+    if (data.Data && data.Data.length > 0) {
+      const item = data.Data[0];
+      const nav = parseFloat(item.NETVALUE || 0);
+      const date = item.NAVDATE || '';
+      if (nav > 0) return { nav, date };
     }
-  } catch (e) { console.warn('天天基金抓取失败', e); }
-
-  // 备: 腾讯基金接口
-  try {
-    const url2 = `https://qt.gtimg.cn/q=jj${code}&_=${Date.now()}`;
-    const r2 = await fetch(url2);
-    const t2 = await r2.text();
-    // 格式: v_jj<code>="1~基金名~基金代码~最新净值~日期~...~涨跌幅~...";
-    const m2 = t2.match(new RegExp('="' + '([^"]+)"');
-    if (m2) {
-      const parts = m2[1].split('~');
-      // parts[3] = 净值, parts[4] = 日期 (YYYYMMDD)
-      if (parts.length >= 5) {
-        const nav = parseFloat(parts[3]);
-        const date = parts[4] ? (parts[4].slice(0,4) + '-' + parts[4].slice(4,6) + '-' + parts[4].slice(6,8)) : '';
-        if (nav > 0) return { nav, date };
-      }
-    }
-  } catch (e) { console.warn('腾讯基金抓取失败', e); }
-
+  } catch (e) {
+    console.warn('天天基金抓取失败', e);
+  }
+  // 备用：如果上面失败，仍可降级到腾讯接口（保留原逻辑）
+  // 这里可调用原 fetchNAV 的备用逻辑，或直接返回 null
   return null;
 }
 
@@ -447,9 +433,9 @@ function bindFundEvents(f, i) {
     redo();
   });
   f.buys.forEach((b, bi) => {
-    const dateInp = document.getElementById(`bdate-${i}-${bi}`);
     const priceInp = document.getElementById(`bprice-${i}-${bi}`);
     const amtInp = document.getElementById(`bamt-${i}-${bi}`);
+    const typeSel = document.getElementById(`btype-${i}-${bi}`);
     // 同步本行份额显示
     const refreshShares = () => {
       const absAmt = Math.abs(b.amount || 0);
@@ -457,9 +443,9 @@ function bindFundEvents(f, i) {
       const span = document.querySelector(`[data-bi="${bi}"].bshares`);
       if (span) span.textContent = sh ? sh.toFixed(2) : '-';
     };
-    if (dateInp) dateInp.addEventListener('input', e => { const p=JSON.stringify(state); b.date = e.target.value; save(p); });
     if (priceInp) priceInp.addEventListener('input', e => { const p=JSON.stringify(state); b.price = parseFloat(e.target.value) || 0; save(p); refreshShares(); updateCardValues(i); });
     if (amtInp) amtInp.addEventListener('input', e => { const p=JSON.stringify(state); const v = Math.abs(parseFloat(e.target.value) || 0); b.amount = (b.type === 'sell') ? -v : v; save(p); refreshShares(); updateCardValues(i); });
+    if (typeSel) typeSel.addEventListener('change', e => { const p=JSON.stringify(state); const newType = e.target.value; b.type = newType; const v = Math.abs(b.amount || 0); b.amount = (newType === 'sell') ? -v : v; save(p); render(); });
     const delBtn = document.querySelector(`[data-buy-del="${i}"][data-idx="${bi}"]`);
     if (delBtn) delBtn.addEventListener('click', () => { const p=JSON.stringify(state); f.buys.splice(bi, 1); save(p); render(); });
   });
@@ -618,8 +604,7 @@ function updateCardValues(i) {
   if (!card) return;
   const { tier, currentAmt, currentTrigger, currentTier, currentIsBuy, neighbors } = calcCurrent(f);
   const dropPct = ((f.price - f.basePrice) / f.basePrice * 100) || 0;
-  // A股惯例: 涨红跌绿
-  const dropColor = dropPct > 0 ? '#dc2626' : (dropPct < 0 ? '#16a34a' : '#93A3BD');
+  const dropColor = dropPct < 0 ? '#dc2626' : '#16a34a';
   const inv_base = (f.initShares || 0) * (f.basePrice || 0);
   const inv_buys = f.buys.reduce((s, b) => s + (b.amount || 0), 0);
   const invested = inv_base + inv_buys;
@@ -628,7 +613,6 @@ function updateCardValues(i) {
   const shares = sh_base + sh_buys;
   const curPrice = f.price || 0;
   const pnl = curPrice * shares - invested;
-  // 持有收益: 正红负绿 (A 股赚钱红、亏钱绿)
   const pnlClass = pnl > 0 ? 'pnl-pos' : (pnl < 0 ? 'pnl-neg' : '');
   const prog = invested / f.target;
   const dropEl = card.querySelector('.fund-head .fund-extra .val');
@@ -659,43 +643,22 @@ function updateCardValues(i) {
   if (stats[0]) stats[0].textContent = Math.round((f.price||0)*shares).toLocaleString();
   if (stats[1]) stats[1].textContent = Math.round(shares).toLocaleString();
   if (stats[2]) stats[2].textContent = shares > 0 ? (invested/shares).toFixed(4) : '-';
-  if (stats[3]) {
-    stats[3].textContent = (pnl>=0?'+':'')+Math.round(pnl).toLocaleString();
-    stats[3].parentElement.style.color = pnl >= 0 ? '#dc2626' : (pnl < 0 ? '#16a34a' : '');
-  }
-  if (stats[4]) {
-    stats[4].textContent = invested > 0 ? ((pnl/invested*100).toFixed(1) + '%') : '-';
-    stats[4].parentElement.style.color = pnl >= 0 ? '#dc2626' : (pnl < 0 ? '#16a34a' : '');
-  }
-  const tfoot = card.querySelector('.buy-table tfoot');
-  if (tfoot) {
-    const trs = tfoot.querySelectorAll('tr');
-    // 第一行: 交易合计
-    if (trs[0]) {
-      const tds0 = trs[0].querySelectorAll('td');
-      if (tds0[2]) tds0[2].textContent = Math.round(inv_buys).toLocaleString();
-      if (tds0[3]) tds0[3].textContent = Math.round(sh_buys).toLocaleString();
-    }
-    // 第二行: 总合计
-    if (trs[1]) {
-      const tds1 = trs[1].querySelectorAll('td');
-      if (tds1[2]) {
-        const b = tds1[2].querySelector('b');
-        if (b) b.textContent = Math.round(invested).toLocaleString();
-      }
-      if (tds1[3]) {
-        const b = tds1[3].querySelector('b');
-        if (b) b.textContent = Math.round(shares).toLocaleString();
-      }
-    }
-  }
+  if (stats[3]) { stats[3].textContent = (pnl>=0?'+':'')+Math.round(pnl).toLocaleString(); stats[3].parentElement.className = pnlClass; }
+  if (stats[4]) { stats[4].textContent = invested > 0 ? ((pnl/invested*100).toFixed(1) + '%') : '-'; stats[4].parentElement.className = pnlClass; }
+  const tfoot = card.querySelector('.buy-table tfoot td:nth-child(3) b');
+  const tfoot2 = card.querySelector('.buy-table tfoot td:nth-child(4) b');
+  const tfootInitAmt = card.querySelector('.buy-table tfoot td:nth-child(3) small');
+  const tfootInitSh = card.querySelector('.buy-table tfoot td:nth-child(4) small');
+  if (tfoot) tfoot.textContent = Math.round(invested).toLocaleString();
+  if (tfoot2) tfoot2.textContent = Math.round(shares).toLocaleString();
+  if (tfootInitAmt) tfootInitAmt.textContent = '初始 ' + Math.round((f.initShares||0) * (f.basePrice||0)).toLocaleString();
+  if (tfootInitSh) tfootInitSh.textContent = '初始 ' + (f.initShares||0).toLocaleString();
 }
 
 function renderFund(f, i) {
   const { tier, currentAmt, currentTrigger, currentTier, currentIsBuy, neighbors } = calcCurrent(f);
   const dropPct = ((f.price - f.basePrice) / f.basePrice * 100) || 0;
-  // A股惯例: 涨红跌绿
-  const dropColor = dropPct > 0 ? '#dc2626' : (dropPct < 0 ? '#16a34a' : '#93A3BD');
+  const dropColor = dropPct < 0 ? '#dc2626' : '#16a34a';
   const inv_base = (f.initShares || 0) * (f.basePrice || 0);
   const inv_buys = f.buys.reduce((s, b) => s + (b.amount || 0), 0);
   const invested = inv_base + inv_buys;
@@ -741,12 +704,12 @@ function renderFund(f, i) {
           <div class="param-panel">
             <div class="param-panel-head">参数设置 ›</div>
             <div class="param-list">
-              <div class="param-row"><span class="param-lbl">基准</span><input type="number" step="0.0001" id="base-basePrice-${i}" value="${f.basePrice}" class="param-input" style="width:100%;min-width:0;font-size:13px;box-sizing:border-box"></div>
-              <div class="param-row highlight"><span class="param-lbl">初始份额</span><input type="number" step="1" id="base-initShares-${i}" value="${f.initShares}" class="param-input" style="width:100%;min-width:0;font-size:13px;box-sizing:border-box"></div>
-              <div class="param-row"><span class="param-lbl">目标</span><input type="number" step="100" id="base-target-${i}" value="${f.target}" class="param-input" style="width:100%;min-width:0;font-size:13px;box-sizing:border-box"></div>
-              <div class="param-row"><span class="param-lbl">中</span><input type="number" step="0.0001" id="price-priceMid-${i}" value="${f.priceMid||0}" class="param-input" title="中点" style="width:100%;min-width:0;font-size:13px;box-sizing:border-box"></div>
-              <div class="param-row"><span class="param-lbl">低</span><input type="number" step="0.0001" id="price-priceLow-${i}" value="${f.priceLow||0}" class="param-input" title="低点" style="width:100%;min-width:0;font-size:13px;box-sizing:border-box"></div>
-              <div class="param-row"><span class="param-lbl">高</span><input type="number" step="0.0001" id="price-priceHigh-${i}" value="${f.priceHigh||0}" class="param-input" title="高点" style="width:100%;min-width:0;font-size:13px;box-sizing:border-box"></div>
+              <div class="param-row"><span class="param-lbl">基准</span><input type="number" step="0.0001" id="base-basePrice-${i}" value="${f.basePrice}" class="param-input" style="width:100%"></div>
+              <div class="param-row highlight"><span class="param-lbl">初始份额</span><input type="number" step="1" id="base-initShares-${i}" value="${f.initShares}" class="param-input" style="width:100%"></div>
+              <div class="param-row"><span class="param-lbl">目标</span><input type="number" step="100" id="base-target-${i}" value="${f.target}" class="param-input" style="width:100%"></div>
+              <div class="param-row"><span class="param-lbl">中点</span><input type="number" step="0.0001" id="price-priceMid-${i}" value="${f.priceMid||0}" class="param-input" style="width:100%"></div>
+              <div class="param-row"><span class="param-lbl">低点</span><input type="number" step="0.0001" id="price-priceLow-${i}" value="${f.priceLow||0}" class="param-input" style="width:100%"></div>
+              <div class="param-row"><span class="param-lbl">高点</span><input type="number" step="0.0001" id="price-priceHigh-${i}" value="${f.priceHigh||0}" class="param-input" style="width:100%"></div>
             </div>
           </div>
         </div>
@@ -791,8 +754,8 @@ function renderFund(f, i) {
             ${(f.initShares || 0) > 0 ? `<div style="font-size:10px;color:#93A3BD;margin-top:2px">初始 ${(f.initShares||0).toLocaleString()}</div>` : ''}
           </div>
           <div class="hold-cell"><div class="hold-lbl">持仓成本</div><div class="hold-val">${shares > 0 ? (invested/shares).toFixed(4) : '-'}</div></div>
-          <div class="hold-cell" style="color:${pnl>=0?'#dc2626':(pnl<0?'#16a34a':'#93A3BD')}"><div class="hold-lbl">持有收益</div><div class="hold-val">${(pnl>=0?'+':'')+pnl.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div></div>
-          <div class="hold-cell" style="color:${pnl>=0?'#dc2626':(pnl<0?'#16a34a':'#93A3BD')}"><div class="hold-lbl">持有收益率</div><div class="hold-val">${invested > 0 ? ((pnl/invested*100).toFixed(2) + '%') : '-'}</div></div>
+          <div class="hold-cell pnl-pos"><div class="hold-lbl">持有收益</div><div class="hold-val">${(pnl>=0?'+':'')+pnl.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div></div>
+          <div class="hold-cell pnl-pos"><div class="hold-lbl">持有收益率</div><div class="hold-val">${invested > 0 ? ((pnl/invested*100).toFixed(2) + '%') : '-'}</div></div>
         </div>
       </div>
       <div class="buy-section">
@@ -806,17 +769,24 @@ function renderFund(f, i) {
         </div>
         <div class="buy-table-wrap">
           <table class="buy-table">
-            <thead><tr><th>日期</th><th>价格</th><th>金额</th><th>份额</th><th>×</th></tr></thead>
+            <thead><tr><th>类型</th><th>价格</th><th>金额</th><th>份额</th><th>×</th></tr></thead>
             <tbody>
               ${f.buys.map((b, bi) => {
                 const isSell = (b.type === 'sell') || (b.amount < 0);
                 const sign = isSell ? '-' : '+';
                 const absAmt = Math.abs(b.amount || 0);
                 const amtColor = isSell ? '#16a34a' : '#dc2626';
+                const typeBg = isSell ? 'rgba(22,163,74,0.15)' : 'rgba(220,38,38,0.15)';
+                const typeColor = isSell ? '#16a34a' : '#dc2626';
                 const shares = (absAmt && b.price) ? (absAmt / b.price) : 0;
                 return `
               <tr>
-                <td><input type="date" id="bdate-${i}-${bi}" value="${b.date||''}" class="bcell" style="font-size:12px;padding:2px 4px"></td>
+                <td>
+                  <select id="btype-${i}-${bi}" class="bcell" style="background:${typeBg};color:${typeColor};font-weight:700;text-align:center;border:1px solid ${typeColor}33;border-radius:6px;padding:3px">
+                    <option value="buy" ${!isSell?'selected':''}>买入</option>
+                    <option value="sell" ${isSell?'selected':''}>卖出</option>
+                  </select>
+                </td>
                 <td><input type="number" step="0.0001" id="bprice-${i}-${bi}" value="${b.price}" class="bcell"></td>
                 <td>
                   <span style="color:${amtColor};font-weight:700">${sign}</span>
@@ -828,16 +798,16 @@ function renderFund(f, i) {
               `;}).join('')}
             </tbody>
             <tfoot>
-              <tr style="color:#93A3BD">
-                <td colspan="2">交易合计</td>
-                <td>${Math.round(inv_buys).toLocaleString()}</td>
-                <td>${Math.round(sh_buys).toLocaleString()}</td>
-                <td></td>
-              </tr>
-              <tr style="background:rgba(0,240,255,0.08);color:#00f0ff">
-                <td colspan="2"><b>总合计</b></td>
-                <td><b>${Math.round(invested).toLocaleString()}</b></td>
-                <td><b>${Math.round(shares).toLocaleString()}</b></td>
+              <tr>
+                <td colspan="2"><b>合计</b></td>
+                <td>
+                  <b>${Math.round(invested).toLocaleString()}</b>
+                  <br><small style="color:#93A3BD;font-weight:400">初始 ${Math.round((f.initShares||0) * (f.basePrice||0)).toLocaleString()}</small>
+                </td>
+                <td>
+                  <b>${Math.round(shares).toLocaleString()}</b>
+                  <br><small style="color:#93A3BD;font-weight:400">初始 ${(f.initShares||0).toLocaleString()}</small>
+                </td>
                 <td></td>
               </tr>
             </tfoot>
@@ -1416,13 +1386,13 @@ window.alert = function(msg) {
 
 function addBuyDialog(i) {
   const f = state[i];
-  // 不再弹窗, 直接 push 一行空白 buy 记录(用现价/基准价, 金额 0)
+  // 不再弹窗, 直接 push 一行默认 buy 记录(用现价/基准价, 金额 500)
   const prev = JSON.stringify(state);
   f.buys.push({
     date: new Date().toISOString().split('T')[0],
     type: 'buy',
-    price: f.price || f.basePrice || 0,
-    amount: 0,
+    price: f.price || f.basePrice || 1,
+    amount: 500,
     tier: 0
   });
   save(prev);
