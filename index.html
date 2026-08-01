@@ -152,10 +152,6 @@ main{padding:8px;display:flex;flex-direction:column;gap:10px;position:relative;z
 .tier-row.mid-tier{background:color-mix(in srgb,var(--neon-orange) 12%,transparent)!important}
 .tier-row.buy-tier{background:color-mix(in srgb,var(--neon-green) 12%,transparent)!important}
 .tier-row.buy-tier .t-amt{color:var(--neon-green)}
-.param-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:10px 12px 14px;background:transparent!important;border:none!important}
-.ps-item{background:linear-gradient(180deg,#fff,#e0f2fe)!important;border:1.5px solid rgba(0,240,255,.4)!important;border-radius:16px;padding:6px 10px;text-align:left;display:flex;align-items:center;justify-content:space-between;gap:4px;box-shadow:0 0 8px rgba(0,240,255,.2)}
-.ps-item .lbl{font-size:11px;color:#1e293b;font-weight:700;flex-shrink:0}
-.ps-item select.param-select{flex:1;font-size:16px;font-weight:800;color:#00f0ff!important;background:transparent;border:none;text-align:right;cursor:pointer;outline:none;text-shadow:0 0 6px rgba(0,240,255,.5);-webkit-appearance:none;-moz-appearance:none;appearance:none;padding:0 14px 0 0;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M0 0 L5 6 L10 0 Z' fill='%2300f0ff'/></svg>");background-repeat:no-repeat;background-position:right center;background-size:8px}
 .buy-section{padding:8px 10px}
 .buy-btns{display:inline-flex;gap:3px;float:right;align-items:center}
 .buy-btns .add-btn{padding:2px 7px;font-size:12px;min-width:24px;line-height:1.4;border-radius:6px}
@@ -207,6 +203,16 @@ main{padding:8px;display:flex;flex-direction:column;gap:10px;position:relative;z
 #pullHint,#flashHint{position:fixed;top:110px;left:50%;transform:translateX(-50%) translateY(-20px);background:var(--neon-cyan)!important;color:#05060b!important;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:700;z-index:9999;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;box-shadow:var(--glow-cyan)}
 #pullHint.show,#flashHint.show{opacity:1;transform:translateX(-50%) translateY(0)}
 @media(min-width:768px){body{font-size:14px}main{max-width:760px;margin:0 auto;width:100%}.tier-grid{grid-template-columns:repeat(3,1fr)}.fund-head{grid-template-columns:1.2fr 1.2fr 1fr .8fr}.lbl{font-size:10px}.val{font-size:15px}.fund-price input{font-size:17px}}
+
+/* ===== 参数设置 - 纵向列表样式（参考图示）===== */
+.param-section{padding:8px 10px 14px;background:transparent!important;border:none!important;margin:0}
+.param-list{display:flex;flex-direction:column;gap:6px}
+.param-row{display:flex;align-items:center;justify-content:space-between;background:rgba(20,26,56,.5);border:1px solid rgba(0,240,255,.2);border-radius:14px;padding:6px 14px;gap:12px;min-height:38px}
+.param-row .plbl{font-size:12px;color:#8a9bb5;font-weight:600;flex-shrink:0;min-width:52px}
+.param-row .pval{flex:1;min-width:0;background:transparent!important;border:none;color:#c5d4e3;font-size:13px;font-weight:700;text-align:right;font-family:-apple-system,monospace;padding:2px 4px;outline:none}
+.param-row .pval:focus{color:#00f0ff;text-shadow:0 0 6px rgba(0,240,255,.5)}
+.param-row select.pval{color:#00f0ff!important;text-align:right;cursor:pointer;-webkit-appearance:none;-moz-appearance:none;appearance:none;padding-right:20px;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M0 0 L5 6 L10 0 Z' fill='%2300f0ff'/></svg>");background-repeat:no-repeat;background-position:right center;background-size:8px}
+.param-row select.pval::-ms-expand{display:none}
 </style>
 </head>
 <body>
@@ -260,7 +266,7 @@ function hidePullHint(){const h=document.getElementById('pullHint');if(h)h.class
 function triggerRefresh(){localStorage.setItem('funds',JSON.stringify(state));refreshAll();const btn=document.getElementById('refreshBtn');if(btn){const old=btn.textContent;btn.textContent='✓';setTimeout(()=>btn.textContent=old,800)}}
 document.addEventListener('DOMContentLoaded',setupPullToRefresh);
 
-// ===== 注入样式（确保渲染完整）=====
+// ===== 注入样式 =====
 (function injectAnimStyles(){
   if(document.getElementById('fund-anim-style'))return;
   const s=document.createElement('style');
@@ -319,7 +325,7 @@ document.querySelectorAll('.sname-input').forEach(inp=>{inp.addEventListener('bl
 
 if(activeTab<state.length)bindFundEvents(state[activeTab],activeTab);updateTime()}
 
-// ===== 渲染基金卡片（完整版）=====
+// ===== 渲染基金卡片 =====
 function renderFund(f,i){const{tier,currentAmt,currentTrigger,currentTier,currentIsBuy,neighbors}=calcCurrent(f);const dropPct=(f.price-f.basePrice)/f.basePrice*100||0;const dropColor=dropPct>0?'#dc2626':dropPct<0?'#16a34a':'#93A3BD';const inv_base=(f.initShares||0)*(f.basePrice||0);const inv_buys=f.buys.reduce((s,b)=>s+(b.amount||0),0);const invested=inv_base+inv_buys;const sh_base=f.initShares||0;const sh_buys=f.buys.reduce((s,b)=>s+(b.amount/(b.price||1)),0);const shares=sh_base+sh_buys;const curPrice=f.price||0;const pnl=curPrice*shares-invested;const pnlClass=pnl>0?'pnl-pos':pnl<0?'pnl-neg':'';const prog=invested/f.target;const tierRows=buildTierTable(f);
 return `<div class="fund" style="border-top:4px solid ${f.color}">
 <div class="fund-head"><div class="fund-name">${f.name}<span class="code-mini">${f.code}</span></div>
@@ -336,11 +342,17 @@ return `<div class="fund" style="border-top:4px solid ${f.color}">
 <div class="buy-table-wrap"><div class="buy-grid-head"><div>日期</div><div>价格</div><div>金额</div><div>份额</div></div><div class="buy-grid-body">${f.buys.map((b,bi)=>{const realAmt=b.amount||0,amtColor=realAmt>0?'#dc2626':realAmt<0?'#16a34a':'#93A3BD',absAmt=Math.abs(realAmt),shares=absAmt&&b.price?absAmt/b.price:0;let dateShort='';if(b.date){const parts=b.date.split('-');if(parts.length===3){const mm=parseInt(parts[1],10),dd=parseInt(parts[2],10);dateShort=(mm<10?'0'+mm:mm)+'/'+(dd<10?'0'+dd:dd)}else dateShort=b.date}return`<div class="buy-row" data-bi="${bi}" data-fund-i="${i}"><div class="buy-row-inner"><div class="bc bc-pill bc-date"><input type="date" id="bdate-${i}-${bi}" value="${b.date||''}" data-short="${dateShort}" class="bcell bdate-slider"></div><div class="bc bc-pill"><input type="number" step=".0001" id="bprice-${i}-${bi}" value="${b.price}" class="bcell"></div><div class="bc bc-pill"><input type="number" step="1" id="bamt-${i}-${bi}" value="${absAmt?Math.round(absAmt):''}" class="bcell" data-original-amount="${realAmt}" style="color:${amtColor};font-weight:700;width:100%"></div><div class="bc bc-pill"><span class="bshares" data-bi="${bi}" style="color:#93A3BD;font-size:13px;font-weight:700">${shares?shares.toFixed(2):'-'}</span></div></div></div>`}).join('')}</div>
 <div class="buy-grid-foot"><div class="bf-label"><b>合计</b></div><div></div><div><b>${Math.round(invested).toLocaleString()}</b></div><div><b>${Math.round(shares).toLocaleString()}</b></div></div></div></div>
 <div class="tier-section"><div class="section-title">档位金额表</div><div class="tier-grid">${(()=>{const left=tierRows.filter(r=>r.tier>=0).sort((a,b)=>b.tier-a.tier),right=tierRows.filter(r=>r.tier<0).sort((a,b)=>b.tier-a.tier),maxLen=Math.max(left.length,right.length);const renderRow=r=>{if(!r)return'<div class="tier-row empty"></div>';let cls='';if(r.tier===tier)cls='current-tier';else if(r.tier===0)cls='base-tier';else if(r.isBuy)cls='buy-tier';if(r.isMid)cls+=' mid-tier';return`<div class="tier-row ${cls}"><span class="t-label">${r.label}${r.isMid?' ⭐':''}</span><span class="t-trigger">${r.trigger?r.trigger.toFixed(4):'-'}</span><span class="t-amt">${r.amt===null?'-':Math.round(r.amt).toLocaleString()}</span></div>`};let html='';for(let i=0;i<maxLen;i++){html+=renderRow(left[i]);html+=renderRow(right[i])}return html})()}</div></div>
-<div class="param-section"><div class="section-title">参数设置</div><div class="param-grid-table"><div class="param-grid-row"><div class="ps-item"><span class="lbl">基准</span><input type="number" step=".0001" id="base-basePrice-${i}" value="${f.basePrice}" class="param-input" style="width:100%;min-width:0;max-width:100%;font-size:13px;box-sizing:border-box;overflow:hidden;text-align:right"></div><div class="ps-item"><span class="lbl">初始份额</span><input type="number" step="1" id="base-initShares-${i}" value="${f.initShares}" class="param-input" style="width:100%;min-width:0;max-width:100%;font-size:13px;box-sizing:border-box;overflow:hidden;text-align:right"></div><div class="ps-item"><span class="lbl">目标</span><input type="number" step="100" id="base-target-${i}" value="${f.target}" class="param-input" style="width:100%;min-width:0;max-width:100%;font-size:13px;box-sizing:border-box;overflow:hidden;text-align:right"></div></div>
-<div class="param-grid-row"><div class="ps-item"><span class="lbl">高点</span><input type="number" step=".0001" id="price-priceHigh-${i}" value="${f.priceHigh||0}" class="param-input" style="width:100%;min-width:0;max-width:100%;font-size:13px;box-sizing:border-box;overflow:hidden;text-align:right"></div><div class="ps-item"><span class="lbl">中点</span><input type="number" step=".0001" id="price-priceMid-${i}" value="${f.priceMid||0}" class="param-input" style="width:100%;min-width:0;max-width:100%;font-size:13px;box-sizing:border-box;overflow:hidden;text-align:right"></div><div class="ps-item"><span class="lbl">低点</span><input type="number" step=".0001" id="price-priceLow-${i}" value="${f.priceLow||0}" class="param-input" style="width:100%;min-width:0;max-width:100%;font-size:13px;box-sizing:border-box;overflow:hidden;text-align:right"></div></div></div>
-<div class="param-strip"><div class="ps-item"><span class="lbl">倍数</span><select id="param-multi-${i}" class="param-select">${[1.0,1.05,1.10,1.15,1.20,1.25,1.30].map(v=>`<option value="${v}"${Math.abs(v-f.multi)<.001?' selected':''}>${v.toFixed(2)}</option>`).join('')}</select></div>
-<div class="ps-item"><span class="lbl">幅度</span><select id="param-step-${i}" class="param-select">${[.02,.03,.05].map(v=>`<option value="${v}"${Math.abs(v-f.step)<.001?' selected':''}>${(v*100).toFixed(0)}%</option>`).join('')}</select></div>
-<div class="ps-item"><span class="lbl">档数</span><select id="param-tiers-${i}" class="param-select">${Array.from({length:11},(_,k)=>k+6).map(v=>`<option value="${v}"${v===f.tiers?' selected':''}>${v}</option>`).join('')}</select></div></div></div></div>`}
+<div class="param-section"><div class="section-title">参数设置</div><div class="param-list">
+<div class="param-row"><span class="plbl">基准</span><input type="number" step=".0001" id="base-basePrice-${i}" value="${f.basePrice}" class="pval"></div>
+<div class="param-row"><span class="plbl">初始份额</span><input type="number" step="1" id="base-initShares-${i}" value="${f.initShares}" class="pval"></div>
+<div class="param-row"><span class="plbl">目标</span><input type="number" step="100" id="base-target-${i}" value="${f.target}" class="pval"></div>
+<div class="param-row"><span class="plbl">高点</span><input type="number" step=".0001" id="price-priceHigh-${i}" value="${f.priceHigh||0}" class="pval"></div>
+<div class="param-row"><span class="plbl">中点</span><input type="number" step=".0001" id="price-priceMid-${i}" value="${f.priceMid||0}" class="pval"></div>
+<div class="param-row"><span class="plbl">低点</span><input type="number" step=".0001" id="price-priceLow-${i}" value="${f.priceLow||0}" class="pval"></div>
+<div class="param-row"><span class="plbl">倍数</span><select id="param-multi-${i}" class="pval">${[1.0,1.05,1.10,1.15,1.20,1.25,1.30].map(v=>`<option value="${v}"${Math.abs(v-f.multi)<.001?' selected':''}>${v.toFixed(2)}</option>`).join('')}</select></div>
+<div class="param-row"><span class="plbl">幅度</span><select id="param-step-${i}" class="pval">${[.02,.03,.05].map(v=>`<option value="${v}"${Math.abs(v-f.step)<.001?' selected':''}>${(v*100).toFixed(0)}%</option>`).join('')}</select></div>
+<div class="param-row"><span class="plbl">档数</span><select id="param-tiers-${i}" class="pval">${Array.from({length:11},(_,k)=>k+6).map(v=>`<option value="${v}"${v===f.tiers?' selected':''}>${v}</option>`).join('')}</select></div>
+</div></div></div>`}
 
 // ===== 汇总 =====
 function renderSummary(){let html='<div class="fund" style="border-top:4px solid #FFD700"><div class="summary-title">📊 投资汇总</div>';let totalInv=0,totalVal=0,totalTgt=0,totalShares=0;const stats=state.map(f=>{const initShares=f.initShares||0,basePrice=f.basePrice||0,curPrice=f.price||0,target=f.target||0,inv=initShares*basePrice+f.buys.reduce((s,b)=>s+(b.amount||0),0),sh=initShares+f.buys.reduce((s,b)=>s+(b.amount/(b.price||1)),0),mv=curPrice*sh,pnl=mv-inv,rate=inv>0?pnl/inv*100:0,dropPct=(f.price-f.basePrice)/f.basePrice*100,prog=f.target>0?inv/f.target*100:0;totalInv+=inv;totalVal+=mv;totalTgt+=f.target;totalShares+=sh;return{f,inv,sh,mv,pnl,rate,dropPct,prog}});const totalPnl=totalVal-totalInv,totalRate=totalInv>0?(totalPnl/totalInv*100).toFixed(2):'0',pnlCol=totalPnl>=0?'#dc2626':'#16a34a';html+='<div class="summary-big">';html+='<div class="sb-stat"><span>总投入</span><b>'+Math.round(totalInv).toLocaleString()+'</b></div>';html+='<div class="sb-stat"><span>总市值</span><b>'+Math.round(totalVal).toLocaleString()+'</b></div>';html+='<div class="sb-stat"><span>总收益</span><b style="color:'+pnlCol+'">'+(totalPnl>=0?'+':'')+Math.round(totalPnl).toLocaleString()+'</b></div>';html+='<div class="sb-stat"><span>总收益率</span><b style="color:'+pnlCol+'">'+totalRate+'%</b></div>';html+='<div class="sb-stat"><span>完成度</span><b>'+(totalTgt>0?(totalInv/totalTgt*100).toFixed(1):'0')+'%</b></div>';html+='<div class="sb-stat"><span>总份额</span><b>'+Math.round(totalShares).toLocaleString()+'</b></div></div>';
