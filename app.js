@@ -21,11 +21,9 @@ window.addEventListener('error', e => {
 const DEFAULT_INIT = [];
 let state;
 try {
-  // 优先用 data.js 里的 FUNDS_INIT, 否则空数组
   const initSource = (typeof FUNDS_INIT !== 'undefined') ? FUNDS_INIT : DEFAULT_INIT;
   const s = localStorage.getItem('funds');
   state = s ? JSON.parse(s) : JSON.parse(JSON.stringify(initSource));
-  // 数据迁移: 旧 buys 缺 type 字段, 负数 amount 自动归类为卖出
   if (Array.isArray(state)) {
     state.forEach(f => {
       if (Array.isArray(f.buys)) {
@@ -52,7 +50,6 @@ async function fetchNAV(code) {
     const r = await fetch(url, { signal: controller.signal });
     clearTimeout(timeoutId);
     const t = await r.text();
-    // 清除可能的空白字符
     const clean = t.replace(/\s/g, '');
     const m = clean.match(/="([^"]*)"/);
     if (m) {
@@ -88,7 +85,6 @@ async function refreshAll() {
   let failCount = 0;
   const total = state.length;
 
-  // 创建或获取状态提示元素
   let statusEl = document.getElementById('refreshStatus');
   if (!statusEl) {
     statusEl = document.createElement('div');
@@ -109,7 +105,6 @@ async function refreshAll() {
       successCount++;
     } else {
       failCount++;
-      // 保留原有价格
     }
     statusEl.textContent = `🔄 刷新中 ${index+1}/${total} (成功 ${successCount})`;
   }
@@ -123,7 +118,6 @@ async function refreshAll() {
 }
 
 function save(prevSnap) {
-  // prevSnap 可选, 显式传入的"操作前"快照用于撤销
   try {
     if (prevSnap) {
       undoStack.push(prevSnap);
@@ -136,7 +130,7 @@ function save(prevSnap) {
 let saveTimer = null;
 function saveDebounced() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(save, 50);  // 50ms 批量保存
+  saveTimer = setTimeout(save, 50);
 }
 function updateSaveBadge() {
   const el = document.getElementById('saveStatus');
@@ -149,100 +143,55 @@ function updateSaveBadge() {
 
 const main = document.getElementById('funds');
 
-// 注入自定义动画样式(持有收益/收益率闪烁 + 滑选日期 + 按钮优化)
+// 注入自定义动画样式
 (function injectAnimStyles() {
   if (document.getElementById('fund-anim-style')) return;
   const s = document.createElement('style');
   s.id = 'fund-anim-style';
   s.textContent = `
     @keyframes pnlPulse {
-      0%, 100% {
-        transform: scale(1);
-        box-shadow: 0 0 0 0 var(--pnl-color, #dc2626);
-        filter: brightness(1);
-      }
-      50% {
-        transform: scale(1.04);
-        box-shadow: 0 0 18px 4px var(--pnl-color, #dc2626);
-        filter: brightness(1.25);
-      }
+      0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 var(--pnl-color, #dc2626); filter: brightness(1); }
+      50% { transform: scale(1.04); box-shadow: 0 0 18px 4px var(--pnl-color, #dc2626); filter: brightness(1.25); }
     }
-    .pnl-flash {
-      transition: all .2s ease;
-    }
-    /* 滑选日期控件 (xx/xx 格式) */
+    .pnl-flash { transition: all .2s ease; }
     .bdate-slider {
-      appearance: none;
-      -webkit-appearance: none;
+      appearance: none; -webkit-appearance: none;
       background: rgba(0,240,255,0.08);
       border: 1px solid rgba(0,240,255,0.25);
-      color: #00f0ff;
-      border-radius: 8px;
-      padding: 4px 8px;
-      font-size: 13px;
-      font-weight: 700;
-      letter-spacing: 0.5px;
-      cursor: pointer;
-      width: 100%;
-      box-sizing: border-box;
-      text-align: center;
+      color: #00f0ff; border-radius: 8px; padding: 4px 8px;
+      font-size: 13px; font-weight: 700; letter-spacing: 0.5px;
+      cursor: pointer; width: 100%; box-sizing: border-box; text-align: center;
     }
     .bdate-slider:focus { outline: none; border-color: #00f0ff; box-shadow: 0 0 8px rgba(0,240,255,0.4); }
     .bdate-slider::-webkit-calendar-picker-indicator {
       filter: invert(1) hue-rotate(170deg) brightness(1.5);
       cursor: pointer;
     }
-    /* 顶部按钮优化(更柔和的颜色) */
-    .add-btn, .del-btn, .buy-toggle-btn {
-      transition: all .2s ease;
-    }
-    /* 添加/撤销/重做按钮 - 浅灰蓝柔和配色 */
+    .add-btn, .del-btn, .buy-toggle-btn { transition: all .2s ease; }
     .add-btn {
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      background: rgba(0,240,255,0.08);
-      color: #67e8f9;
+      width: 36px; height: 36px; border-radius: 50%;
+      background: rgba(0,240,255,0.08); color: #67e8f9;
       border: 1.5px solid rgba(0,240,255,0.3);
-      font-size: 18px;
-      font-weight: 700;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      margin-right: 6px;
-      box-shadow: none;
+      font-size: 18px; font-weight: 700; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
+      margin-right: 6px; box-shadow: none;
     }
-    .add-btn:hover {
-      background: rgba(0,240,255,0.18);
-      box-shadow: 0 0 8px rgba(0,240,255,0.25);
-    }
-    /* 滑选删除模式的红色按钮 - 颜色更柔和 */
+    .add-btn:hover { background: rgba(0,240,255,0.18); box-shadow: 0 0 8px rgba(0,240,255,0.25); }
     .buy-toggle-btn {
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      background: rgba(255,255,255,0.06);
-      color: #94a3b8;
+      width: 36px; height: 36px; border-radius: 50%;
+      background: rgba(255,255,255,0.06); color: #94a3b8;
       border: 1.5px solid rgba(148,163,184,0.35);
-      font-size: 18px;
-      font-weight: 700;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
+      font-size: 18px; font-weight: 700; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
       margin-right: 6px;
     }
     .buy-toggle-btn:hover { background: rgba(148,163,184,0.15); }
     .buy-toggle-btn.active {
-      background: rgba(251,146,60,0.18);
-      color: #fb923c;
-      border-color: rgba(251,146,60,0.55);
-      box-shadow: 0 0 10px rgba(251,146,60,0.3);
+      background: rgba(251,146,60,0.18); color: #fb923c;
+      border-color: rgba(251,146,60,0.55); box-shadow: 0 0 10px rgba(251,146,60,0.3);
     }
     .del-btn {
-      background: rgba(251,113,133,0.12);
-      color: #fb7185;
+      background: rgba(251,113,133,0.12); color: #fb7185;
       border: 1.5px solid rgba(251,113,133,0.4);
       box-shadow: 0 0 6px rgba(251,113,133,0.15);
     }
@@ -398,18 +347,13 @@ let activeTab = 0;
 
 function render() {
   let html = '<div class="tab-bar">';
-  // 存表按钮 - 最左(和 + 同款圆形)
   html += '<button class="tab-add tab-save-btn" id="tabSaveBtn" title="保存到 LocalStorage">💾</button>';
-  // 状态间用间隔
   html += '<div style="width:6px;flex-shrink:0"></div>';
-  // 汇总 tab
   html += '<button class="tab tab-summary ' + (activeTab===state.length?'active':'') + '" data-tab="' + state.length + '">📊 汇总</button>';
-  // 状态间用间隔
   html += '<div style="width:6px;flex-shrink:0"></div>';
   state.forEach((f, i) => {
     html += `<button class="tab ${i===activeTab?'active':''}" data-tab="${i}">${f.name}</button>`;
   });
-  // + 按钮放最右
   html += '<button class="tab-add" data-add="1" title="新增基金">+</button>';
   html += '</div>';
   html += '<div class="tab-content">';
@@ -425,7 +369,6 @@ function render() {
   });
   document.querySelector('.tab-add')?.addEventListener('click', addNewFund);
   document.getElementById('tabSaveBtn')?.addEventListener('click', saveData);
-  // 汇总表品种名改名同步到 state
   document.querySelectorAll('.sname-input').forEach(inp => {
     inp.addEventListener('blur', () => {
       const fidx = parseInt(inp.dataset.fidx);
@@ -433,7 +376,7 @@ function render() {
       if (newName && state[fidx] && state[fidx].name !== newName) {
         state[fidx].name = newName;
         localStorage.setItem('funds', JSON.stringify(state));
-        render(); // 重新渲染同步 tab
+        render();
       }
     });
     inp.addEventListener('focus', () => { inp.style.borderColor = 'var(--neon-cyan)'; });
@@ -495,7 +438,6 @@ function bindFundEvents(f, i) {
   if (priceIn) priceIn.addEventListener('input', e => {
     const prev = JSON.stringify(state);
     f.price = parseFloat(e.target.value) || 0;
-   // f._manualPrice = true; //
     save(prev);
     updateCardValues(i);
   });
@@ -505,7 +447,6 @@ function bindFundEvents(f, i) {
       const field = k.replace('base-', '');
       const prev = JSON.stringify(state);
       f[field] = parseFloat(e.target.value) || 0;
-      // 仅保留一次标记
       if (!f._manualFields) f._manualFields = {};
       f._manualFields[field] = true;
       save(prev);
@@ -533,7 +474,6 @@ function bindFundEvents(f, i) {
   document.getElementById(`redo-${i}`)?.addEventListener('click', () => {
     redo();
   });
-  // 删除模式切换按钮
   const delToggle = document.getElementById(`delToggle-${i}`);
   if (delToggle) {
     delToggle.addEventListener('click', () => {
@@ -548,22 +488,18 @@ function bindFundEvents(f, i) {
     const dateInp = document.getElementById(`bdate-${i}-${bi}`);
     const priceInp = document.getElementById(`bprice-${i}-${bi}`);
     const amtInp = document.getElementById(`bamt-${i}-${bi}`);
-    // 同步本行份额显示
     const refreshShares = () => {
       const absAmt = Math.abs(b.amount || 0);
       const sh = (absAmt && b.price) ? (absAmt / b.price) : 0;
       const span = document.querySelector(`[data-bi="${bi}"].bshares`);
       if (span) span.textContent = sh ? sh.toFixed(2) : '-';
     };
-    // 同步本行金额颜色(按 amount 正负)
     const refreshAmtColor = () => {
       if (!amtInp) return;
       const v = b.amount || 0;
       amtInp.style.color = v > 0 ? '#dc2626' : (v < 0 ? '#16a34a' : '#93A3BD');
     };
-    // 日期输入: 同步格式化显示文本为 xx/xx
     if (dateInp) {
-      // 把 dateInp 容器变为相对定位
       dateInp.parentElement.style.position = 'relative';
       const updateDateOverlay = () => {
         let ovl = dateInp.parentElement.querySelector('.bdate-overlay');
@@ -588,7 +524,6 @@ function bindFundEvents(f, i) {
           ovl.style.display = 'none';
         }
       };
-      // 让 input 自身透明文字(只显示我们自己的 overlay)
       dateInp.style.color = 'transparent';
       dateInp.style.caretColor = 'transparent';
       dateInp.addEventListener('input', e => { const p=JSON.stringify(state); b.date = e.target.value; save(p); updateDateOverlay(); });
@@ -599,12 +534,10 @@ function bindFundEvents(f, i) {
     if (amtInp) {
       amtInp.addEventListener('input', e => {
         const p = JSON.stringify(state);
-        // 以输入数据为准: 用户直接输入正数/负数, 决定 b.amount 的符号和 b.type
         const rawStr = e.target.value;
         const v = parseFloat(rawStr) || 0;
         b.amount = v;
         b.type = v < 0 ? 'sell' : 'buy';
-        // 同步显示: 始终展示绝对值
         refreshAmtColor();
         save(p);
         refreshShares();
@@ -615,7 +548,6 @@ function bindFundEvents(f, i) {
     if (delBtn) delBtn.addEventListener('click', () => { const p=JSON.stringify(state); f.buys.splice(bi, 1); save(p); render(); });
   });
 
-  // 长按删除 - 仿照基金卡片逻辑: 长按 1s 弹确认对话框
   (function setupLongPressDelete() {
     if (document.body.dataset.lpDeleteBound === '1') return;
     document.body.dataset.lpDeleteBound = '1';
@@ -639,7 +571,6 @@ function bindFundEvents(f, i) {
       if (!row) return;
       const bi = parseInt(row.dataset.bi, 10);
       if (isNaN(bi)) return;
-      // 排除点击 input 触发的长按
       if (e.target.tagName === 'INPUT') return;
       row._lpStartTime = Date.now();
       row._lpInterval = setInterval(() => {
@@ -659,7 +590,6 @@ function bindFundEvents(f, i) {
         hideHint();
         const fundI = parseInt(row.dataset.fundI, 10);
         if (isNaN(fundI)) return;
-        // 自定义确认弹窗(避免浏览器 confirm)
         showModal({
           title: '删除交易记录',
           message: '确定要删除该行交易记录?',
@@ -694,7 +624,6 @@ function bindFundEvents(f, i) {
     document.body.addEventListener('touchmove', e => {
       const row = e.target.closest?.('.buy-row');
       if (!row) return;
-      // 移动超过 8px 算滚动, 取消长按
       if (row._lpStartTime && (row._lpStartX === undefined)) {
         const t = e.touches[0];
         row._lpStartX = t.clientX;
@@ -776,7 +705,6 @@ function renderSummary() {
   html += '<tr style="background:#1F4E78;color:#fff;font-weight:700"><td>合计</td><td>-</td><td>-</td><td>' + Math.round(totalVal).toLocaleString() + '</td><td>' + Math.round(totalShares).toLocaleString() + '</td><td style="color:#FFD700">' + (totalPnl>=0?'+':'') + Math.round(totalPnl).toLocaleString() + '</td><td style="color:#FFD700">' + totalRate + '%</td><td>' + Math.round(totalInv).toLocaleString() + '</td><td>' + (totalInv/totalTgt*100).toFixed(0) + '%</td></tr>';
   html += '</tbody></table></div>';
 
-  // 综合性投资建议
   html += '<div class="section-title">💡 综合性投资建议</div>';
   html += '<div class="advice-list">';
   stats.forEach(s => {
@@ -809,7 +737,6 @@ function renderSummary() {
       adv = '现价 ≈ 基准';
       reason = '位置正常';
     }
-    // 行业分析
     const industryMap = { '港股互联': '港股互联网 (恒生科技)', '证券': '券商 (牛市弹性)', '煤炭': '煤炭 (红利防御)', '军工': '军工 (主题博弈)' };
     const ind = industryMap[f.name] || f.name;
     const indAdv = dropPct < -15 ? '🔻 超跌，可分批' : (dropPct < -5 ? '⚠️ 偏弱' : (dropPct < 0 ? '📉 弱市' : '📈 偏强'));
@@ -824,7 +751,6 @@ function renderSummary() {
     html += '<div class="ac-row ac-foot"><span>投入 ' + Math.round(inv).toLocaleString() + ' · 完成 ' + prog.toFixed(0) + '%</span><b>收益 ' + (pnl>=0?'+':'') + Math.round(pnl).toLocaleString() + ' (' + rate.toFixed(1) + '%)</b></div>';
     html += '</div></div>';
   });
-  // 总建议
   const triggers = stats.filter(s => {
     const { currentIsBuy } = calcCurrent(s.f);
     return currentIsBuy;
@@ -865,7 +791,6 @@ function updateCardValues(i) {
   if (!card) return;
   const { tier, currentAmt, currentTrigger, currentTier, currentIsBuy, neighbors } = calcCurrent(f);
   const dropPct = ((f.price - f.basePrice) / f.basePrice * 100) || 0;
-  // A股惯例: 涨红跌绿
   const dropColor = dropPct > 0 ? '#dc2626' : (dropPct < 0 ? '#16a34a' : '#93A3BD');
   const inv_base = (f.initShares || 0) * (f.basePrice || 0);
   const inv_buys = f.buys.reduce((s, b) => s + (b.amount || 0), 0);
@@ -875,8 +800,6 @@ function updateCardValues(i) {
   const shares = sh_base + sh_buys;
   const curPrice = f.price || 0;
   const pnl = curPrice * shares - invested;
-  // 持有收益: 正红负绿 (A 股赚钱红、亏钱绿)
-  const pnlClass = pnl > 0 ? 'pnl-pos' : (pnl < 0 ? 'pnl-neg' : '');
   const prog = invested / f.target;
   const dropEl = card.querySelector('.fund-head .fund-extra .val');
   if (dropEl) { dropEl.textContent = dropPct.toFixed(1) + '%'; dropEl.style.color = dropColor; }
@@ -914,11 +837,9 @@ function updateCardValues(i) {
     stats[4].textContent = invested > 0 ? ((pnl/invested*100).toFixed(1) + '%') : '-';
     stats[4].parentElement.style.color = pnl >= 0 ? '#dc2626' : (pnl < 0 ? '#16a34a' : '');
   }
-  // 合计行更新(新结构: .buy-grid-foot)
   const foot = card.querySelector('.buy-grid-foot');
   if (foot) {
     const cells = foot.querySelectorAll('div');
-    // cells: [0]=合计label, [1]=空, [2]=投入金额, [3]=份额
     if (cells[2]) {
       const b = cells[2].querySelector('b');
       if (b) b.textContent = Math.round(invested).toLocaleString();
@@ -930,7 +851,6 @@ function updateCardValues(i) {
       else cells[3].textContent = Math.round(shares).toLocaleString();
     }
   }
-  // 兼容旧 .buy-table tfoot
   const tfoot = card.querySelector('.buy-table tfoot');
   if (tfoot) {
     const trs = tfoot.querySelectorAll('tr');
@@ -953,7 +873,6 @@ function updateCardValues(i) {
 function renderFund(f, i) {
   const { tier, currentAmt, currentTrigger, currentTier, currentIsBuy, neighbors } = calcCurrent(f);
   const dropPct = ((f.price - f.basePrice) / f.basePrice * 100) || 0;
-  // A股惯例: 涨红跌绿
   const dropColor = dropPct > 0 ? '#dc2626' : (dropPct < 0 ? '#16a34a' : '#93A3BD');
   const inv_base = (f.initShares || 0) * (f.basePrice || 0);
   const inv_buys = f.buys.reduce((s, b) => s + (b.amount || 0), 0);
@@ -963,7 +882,6 @@ function renderFund(f, i) {
   const shares = sh_base + sh_buys;
   const curPrice = f.price || 0;
   const pnl = curPrice * shares - invested;
-  const pnlClass = pnl > 0 ? 'pnl-pos' : (pnl < 0 ? 'pnl-neg' : '');
   const prog = invested / f.target;
   const tierRows = buildTierTable(f);
   return `
@@ -1047,13 +965,10 @@ function renderFund(f, i) {
           <div class="buy-grid-head"><div>日期</div><div>价格</div><div>金额</div><div>份额</div></div>
           <div class="buy-grid-body">
               ${f.buys.map((b, bi) => {
-                // 颜色按 amount 正负: 正数红(买入), 负数绿(卖出)
                 const realAmt = b.amount || 0;
                 const amtColor = realAmt > 0 ? '#dc2626' : (realAmt < 0 ? '#16a34a' : '#93A3BD');
-                // 显示金额(去掉 +/- 符号前缀)
                 const absAmt = Math.abs(realAmt);
                 const shares = (absAmt && b.price) ? (absAmt / b.price) : 0;
-                // 日期: 转成 xx/xx 格式
                 let dateShort = '';
                 if (b.date) {
                   const parts = b.date.split('-');
@@ -1091,8 +1006,6 @@ function renderFund(f, i) {
         <div class="section-title">档位金额表</div>
         <div class="tier-grid">
           ${(() => {
-            // 左列: t=10..0 (从上到下: +10 +9 +8 ... +1 基准)
-            // 右列: t=-1..-10 (从上到下: -1 -2 ... -10)
             const left = tierRows.filter(r => r.tier >= 0).sort((a, b) => b.tier - a.tier);
             const right = tierRows.filter(r => r.tier < 0).sort((a, b) => b.tier - a.tier);
             const maxLen = Math.max(left.length, right.length);
@@ -1145,17 +1058,14 @@ function renderFund(f, i) {
 function updateTime() {
   const d = new Date();
   const yyyy = d.getFullYear();
-  const mm = d.getMonth() + 1; // 不补零
-  const dd = d.getDate();      // 不补零
+  const mm = d.getMonth() + 1;
+  const dd = d.getDate();
   const hh = String(d.getHours()).padStart(2,'0');
   const mi = String(d.getMinutes()).padStart(2,'0');
-  // 标题 - 今天日期
   const dt = document.getElementById('dateTitle');
   if (dt) dt.textContent = `${yyyy}/${mm}/${dd}`;
-  // 日期徽章
   const db = document.getElementById('dateBadge');
   if (db) db.textContent = `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
-  // #time 元素保留, 但不显示
   const el = document.getElementById('time');
   if (el) el.textContent = '';
 }
@@ -1325,7 +1235,6 @@ small{color:#93A3BD;font-size:10px}
 
 
 function exportExcelToFile() {
-  // 加载 SheetJS
   if (typeof XLSX === 'undefined') {
     const s = document.createElement('script');
     s.src = 'xlsx.full.min.js';
@@ -1335,8 +1244,6 @@ function exportExcelToFile() {
     return;
   }
   const wb = XLSX.utils.book_new();
-  
-  // 单 sheet: 3 段拼接
   let totalInv=0, totalVal=0, totalTgt=0;
   state.forEach(f => {
     const inv = (f.initShares * f.basePrice) + f.buys.reduce((s,b)=>s+(b.amount||0),0);
@@ -1394,7 +1301,6 @@ function exportExcelToFile() {
     });
   });
   const ws = XLSX.utils.aoa_to_sheet(rows);
-  // 合并表头
   ws['!merges'] = [
     {s:{r:0,c:0},e:{r:0,c:12}},
     {s:{r:1,c:1},e:{r:1,c:4}},
@@ -1403,18 +1309,14 @@ function exportExcelToFile() {
     {s:{r:rows.length - state.reduce((s,f)=>s+f.buys.length,0) - 2,c:0},e:{r:rows.length - state.reduce((s,f)=>s+f.buys.length,0) - 2,c:12}},
   ];
   XLSX.utils.book_append_sheet(wb, ws, '基金加仓总览');
-  
   const ts = new Date().toISOString().split('T')[0];
   XLSX.writeFile(wb, '基金加仓总览_' + ts + '.xlsx');
 }
 
 function saveData() {
-  // 1) 写 localStorage
   localStorage.setItem('funds', JSON.stringify(state));
-  // 2) 重新计算
   updateCardValuesAll();
   render();
-  // 3) 按钮提示(不再导出 Excel)
   const btn = document.getElementById('saveBtn');
   if (btn) {
     const old = btn.textContent;
@@ -1516,9 +1418,7 @@ function resetData() {
 }
 
 document.getElementById('saveBtn')?.addEventListener('click', saveData);
-// 侧边按钮组 - 永久靠右显示, 不隐藏
 
-// 主题切换 (三态循环: cyber -> dark -> light -> cyber)
 const THEME_CYCLE = ['cyber', 'dark', 'light'];
 const THEME_ICON = { cyber: '🌃', dark: '🌙', light: '☀️' };
 let theme = localStorage.getItem('theme') || 'cyber';
@@ -1535,7 +1435,6 @@ function toggleTheme() {
   applyTheme();
 }
 function logout() {
-  // 登录功能已移除, 这里只做刷新(保留以兼容旧按钮)
   location.reload();
 }
 document.getElementById('themeBtn')?.addEventListener('click', toggleTheme);
@@ -1585,43 +1484,17 @@ function deleteFund(idx) {
   updateSaveBadge();
 }
 
-
-
-// 随机宋词 - 覆盖 alert/prompt 的标题, 提升美感
 const SONG_CI = [
-  '春风又绿江南岸',
-  '人生若只如初见',
-  '明月几时有',
-  '小楼昨夜又东风',
-  '落花人独立',
-  '碧云天，黄叶地',
-  '一蓑烟雨任平生',
-  '何妨吟啸且徐行',
-  '归去，也无风雨也无晴',
-  '但愿人长久，千里共婵娟',
-  '此情可待成追忆',
-  '天涯何处无芳草',
-  '山有木兮木有枝',
-  '桃李春风一杯酒',
-  '人间有味是清欢',
-  '醉后不知天在水',
-  '满船清梦压星河',
-  '沧海月明珠有泪',
-  '留连戏蝶时时舞',
-  '自在娇莺恰恰啼',
-  '江上数峰青',
-  '且将新火试新茶',
-  '人间至味是清欢',
-  '已是悬崖百丈冰',
-  '花褪残红青杏小',
-  '枝上柳绵吹又少',
-  '天涯何处无芳草',
-  '笑渐不闻声渐悄',
-  '多情却被无情恼',
-  '天涯流落思无穷'
+  '春风又绿江南岸', '人生若只如初见', '明月几时有', '小楼昨夜又东风',
+  '落花人独立', '碧云天，黄叶地', '一蓑烟雨任平生', '何妨吟啸且徐行',
+  '归去，也无风雨也无晴', '但愿人长久，千里共婵娟', '此情可待成追忆',
+  '天涯何处无芳草', '山有木兮木有枝', '桃李春风一杯酒', '人间有味是清欢',
+  '醉后不知天在水', '满船清梦压星河', '沧海月明珠有泪', '留连戏蝶时时舞',
+  '自在娇莺恰恰啼', '江上数峰青', '且将新火试新茶', '人间至味是清欢',
+  '已是悬崖百丈冰', '花褪残红青杏小', '枝上柳绵吹又少', '天涯何处无芳草',
+  '笑渐不闻声渐悄', '多情却被无情恼', '天涯流落思无穷'
 ];
 
-// 自定义 modal 替代浏览器原生 prompt/alert
 function showModal(opts) {
   return new Promise((resolve) => {
     const title = opts.title || SONG_CI[Math.floor(Math.random() * SONG_CI.length)];
@@ -1662,7 +1535,6 @@ function showModal(opts) {
   });
 }
 
-// 覆盖原生 prompt/alert - 避免 "网址.cn提示"
 window.prompt = function(msg, def) {
   console.warn('prompt 被调用, 应当用 showModal 代替', msg);
   return def || '';
@@ -1673,7 +1545,6 @@ window.alert = function(msg) {
 
 function addBuyDialog(i) {
   const f = state[i];
-  // 不再弹窗, 直接 push 一行空白 buy 记录(用现价/基准价, 金额 0)
   const prev = JSON.stringify(state);
   f.buys.push({
     date: new Date().toISOString().split('T')[0],
@@ -1685,7 +1556,6 @@ function addBuyDialog(i) {
   save(prev);
   render();
 }
-
 
 let undoStack = [];
 let redoStack = [];
