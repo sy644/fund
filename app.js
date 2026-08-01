@@ -42,73 +42,81 @@ try {
   throw e;
 }
 
+// ---------- 净值抓取（仅腾讯接口，支持跨域，带超时） ----------
 async function fetchNAV(code) {
   if (!code) return null;
-  // 主: 天天基金最新净值接口 (JSONP 转文本, fetch 也能取)
   try {
-    const url1 = `https://fund.eastmoney.com/f10/FundNetValue.ashx?type=latest&code=${code}&_=${Date.now()}`;
-    const r1 = await fetch(url1);
-    const t1 = await r1.text();
-    const m1 = t1.match(/jsonpCallback\((\{.*\})\)/);
-    if (m1) {
-      const d = JSON.parse(m1[1]);
-      if (d.Data && d.Data.length > 0) {
-        const nav = parseFloat(d.Data[0].NETVALUE || 0);
-        const date = d.Data[0].NAVDATE || '';
-        if (nav > 0) return { nav, date };
-      }
-    }
-  } catch (e) { console.warn('天天基金抓取失败', e); }
-
-  // 备: 腾讯基金接口
-  try {
-    const url2 = `https://qt.gtimg.cn/q=jj${code}&_=${Date.now()}`;
-    const r2 = await fetch(url2);
-    const t2 = await r2.text();
-    // 格式: v_jj<code>="1~基金名~基金代码~最新净值~日期~...~涨跌幅~...";
-    const m2 = t2.match(new RegExp('="' + '([^"]+)"'));
-    if (m2) {
-      const parts = m2[1].split('~');
-      // parts[3] = 净值, parts[4] = 日期 (YYYYMMDD)
+    const url = `https://qt.gtimg.cn/q=jj${code}&_=${Date.now()}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const r = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    const t = await r.text();
+    // 清除可能的空白字符
+    const clean = t.replace(/\s/g, '');
+    const m = clean.match(/="([^"]*)"/);
+    if (m) {
+      const parts = m[1].split('~');
       if (parts.length >= 5) {
         const nav = parseFloat(parts[3]);
-        const date = parts[4] ? (parts[4].slice(0,4) + '-' + parts[4].slice(4,6) + '-' + parts[4].slice(6,8)) : '';
+        const dateRaw = parts[4] || '';
+        let date = '';
+        if (dateRaw.length === 8) {
+          date = dateRaw.slice(0,4) + '-' + dateRaw.slice(4,6) + '-' + dateRaw.slice(6,8);
+        }
         if (nav > 0) return { nav, date };
       }
     }
-  } catch (e) { console.warn('腾讯基金抓取失败', e); }
-
-  return null;
+    console.warn('腾讯接口返回格式异常:', t);
+    return null;
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      console.warn('净值抓取超时:', code);
+    } else {
+      console.warn('腾讯基金抓取失败:', e);
+    }
+    return null;
+  }
 }
 
+// ---------- 刷新所有基金（带进度提示） ----------
 async function refreshAll() {
   const btn = document.getElementById('refreshBtn');
   if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
-  let cache = {};
-  try { cache = await fetch('nav_cache.json').then(r => r.ok ? r.json() : {}); } catch(e){}
-  // app.js - refreshAll 函数
-for (const f of state) {
-  // 去掉下面这行判断，或者把它注释掉
-  // if (f._manualPrice) continue;//
   
-  let r = null;
-  try { r = await fetchNAV(f.code); } catch(e) {}
-  if (r && r.nav) {
-    // 抓取成功 → 强制覆盖，并且清除手动锁定标记（防止其他地方干扰）
-    f.price = r.nav;
-    f.priceDate = r.date || new Date().toISOString().split('T')[0];
-    f._manualPrice = false; // 👈 清除锁定标记，保持自动状态
-  } else if (cache[f.code]) {
-    const c = cache[f.code];
-    const last = Array.isArray(c) ? c[c.length-1] : c;
-    if (last && last.nav) {
-      f.price = last.nav;
-      f.priceDate = last.date || last.fetched;
-      f._manualPrice = false;
-    }
+  let successCount = 0;
+  let failCount = 0;
+  const total = state.length;
+
+  // 创建或获取状态提示元素
+  let statusEl = document.getElementById('refreshStatus');
+  if (!statusEl) {
+    statusEl = document.createElement('div');
+    statusEl.id = 'refreshStatus';
+    statusEl.style.cssText = 'position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.7);color:#fff;padding:8px 16px;border-radius:20px;z-index:9999;font-size:13px;backdrop-filter:blur(4px);';
+    document.body.appendChild(statusEl);
   }
-  // 如果抓取失败，保留现有值（可能是手动填的或旧的抓取值）
-}
+  statusEl.style.display = 'block';
+  statusEl.textContent = `🔄 刷新中 0/${total}`;
+
+  for (const [index, f] of state.entries()) {
+    let r = null;
+    try { r = await fetchNAV(f.code); } catch(e) {}
+    if (r && r.nav) {
+      f.price = r.nav;
+      f.priceDate = r.date || new Date().toISOString().split('T')[0];
+      f._manualPrice = false;
+      successCount++;
+    } else {
+      failCount++;
+      // 保留原有价格
+    }
+    statusEl.textContent = `🔄 刷新中 ${index+1}/${total} (成功 ${successCount})`;
+  }
+
+  statusEl.textContent = `✅ 刷新完成: 成功 ${successCount} / 失败 ${failCount}`;
+  setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
+
   if (btn) { btn.disabled = false; btn.textContent = '🔄'; }
   localStorage.setItem('funds', JSON.stringify(state));
   render();
@@ -497,17 +505,8 @@ function bindFundEvents(f, i) {
       const field = k.replace('base-', '');
       const prev = JSON.stringify(state);
       f[field] = parseFloat(e.target.value) || 0;
-      f._manualFields = f._manualFields || {};
-      f._manualFields[field] = true;
-      f._manualFields = f._manualFields || {};
-      f._manualFields[field] = true;
-      f._manualFields = f._manualFields || {};
-      f._manualFields[field] = true;
-      f._manualFields = f._manualFields || {};
-      f._manualFields[field] = true;
-      f._manualFields = f._manualFields || {};
-      f._manualFields[field] = true;
-      f._manualFields = f._manualFields || {};
+      // 仅保留一次标记
+      if (!f._manualFields) f._manualFields = {};
       f._manualFields[field] = true;
       save(prev);
       updateCardValues(i);
@@ -519,17 +518,7 @@ function bindFundEvents(f, i) {
       const field = k.replace('price-', '');
       const prev = JSON.stringify(state);
       f[field] = parseFloat(e.target.value) || 0;
-      f._manualFields = f._manualFields || {};
-      f._manualFields[field] = true;
-      f._manualFields = f._manualFields || {};
-      f._manualFields[field] = true;
-      f._manualFields = f._manualFields || {};
-      f._manualFields[field] = true;
-      f._manualFields = f._manualFields || {};
-      f._manualFields[field] = true;
-      f._manualFields = f._manualFields || {};
-      f._manualFields[field] = true;
-      f._manualFields = f._manualFields || {};
+      if (!f._manualFields) f._manualFields = {};
       f._manualFields[field] = true;
       save(prev);
       updateCardValues(i);
@@ -1725,5 +1714,4 @@ function flashHint(t) {
   h.classList.add('show');
   clearTimeout(h._t);
   h._t = setTimeout(() => h.classList.remove('show'), 1200);
-}'), 1200);
 }
