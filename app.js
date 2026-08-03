@@ -1,6 +1,6 @@
 // === 已移除登录/密码保护相关代码 ===
 
-// 全局错误兜底 - 避免黑屏静默失败
+// 错误兜底 - 避免黑屏静默失败
 window.addEventListener('error', e => {
   console.error('[FUND ERROR]', e.error || e.message);
   var el = document.getElementById('funds') || document.body;
