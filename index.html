@@ -1,53 +1,88 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="cyber">
+<html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#0a1024">
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<meta http-equiv="Pragma" content="no-cache">
-<meta http-equiv="Expires" content="0">
-<title>基金加仓总览 R2</title>
-<link rel="stylesheet" href="style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>持仓收益仪表盘</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div id="funds"><div style="padding:12px;margin:8px;border-radius:8px;font-size:12px;background:rgba(0,240,255,0.1);color:#67e8f9;border:1px solid #00f0ff">⏳ 启动中…</div></div>
+    <div class="container">
+        <h2>基金持仓收益统计面板</h2>
+        <!-- 环形完成度+参数设置区域 -->
+        <div class="top-wrap">
+            <div class="ring-box">
+                <svg width="140" height="140" viewBox="0 0 180 180">
+                    <circle class="ring-bg" cx="90" cy="90" r="82" fill="none" stroke="#2a3447" stroke-width="12"/>
+                    <circle class="ring-fill" cx="90" cy="90" r="82" fill="none" stroke="#8a9bb5" stroke-width="12" stroke-linecap="round"
+                            stroke-dasharray="540" stroke-dashoffset="540" transform="rotate(-90 90 90)"/>
+                </svg>
+                <div class="ring-text">完成度<br><span id="percentText">0%</span></div>
+            </div>
+            <!-- 参数设置面板 带定制边框样式 -->
+            <div class="setting-panel">
+                <h4>参数设置</h4>
+                <div class="set-item">
+                    <label>定投基准价：</label>
+                    <input type="number" step="0.0001" id="basePrice">
+                </div>
+                <div class="set-item">
+                    <label>单次定投金额：</label>
+                    <input type="number" id="perMoney">
+                </div>
+                <button id="saveSetBtn">保存参数</button>
+            </div>
+        </div>
 
-  <script>
-    if (typeof FUNDS_INIT === 'undefined') {
-      window.FUNDS_INIT = [
-        { name: '港股互联', code: '513770', price: 0.6854, basePrice: 0.7898, initShares: 18329.53, target: 20000, multi: 1.10, step: 0.03, tiers: 15, priceLow: 0.574, priceMid: 0.912, priceHigh: 1.124, color: '#00f0ff',
-          buys: [
-            { date: '2026-08-03', type: 'buy', price: 0.6900, amount: 300, sday: '2026-08-04', tier: -3 },
-            { date: '2026-08-01', type: 'buy', price: 0.6854, amount: 200, sday: '2026-08-01', tier: -3 },
-            { date: '2026-07-24', type: 'buy', price: 0.6582, amount: 250, sday: '2026-07-24', tier: -4 },
-            { date: '2026-07-15', type: 'sell', price: 0.666, amount: -200, sday: '2026-08-04', tier: -4 },
-            { date: '2025-02-19', type: 'buy', price: 0.7898, amount: 14477, sday: '2025-02-20', tier: 0 }
-          ]
-        },
-        { name: '白酒', code: '161725', price: 0.8123, basePrice: 0.9000, initShares: 10000, target: 15000, multi: 1.10, step: 0.03, tiers: 10, priceLow: 0.65, priceMid: 1.05, priceHigh: 1.20, color: '#fbbf24',
-          buys: [
-            { date: '2025-01-10', type: 'buy', price: 0.9, amount: 2000, sday: '2025-01-12', tier: 0 },
-            { date: '2025-05-20', type: 'sell', price: 0.85, amount: -1500, tier: -1 }
-          ]
-        }
-      ];
-    }
-    if (typeof NAV_HISTORY_INIT === 'undefined') {
-      window.NAV_HISTORY_INIT = [
-        { code: '513770', name: '港股互联', date: '2025-02-19', nav: 0.7898, ts: Date.now() },
-        { code: '513770', name: '港股互联', date: '2025-02-20', nav: 0.7898, ts: Date.now() },
-        { code: '513770', name: '港股互联', date: '2026-07-15', nav: 0.666, ts: Date.now() },
-        { code: '513770', name: '港股互联', date: '2026-07-24', nav: 0.6582, ts: Date.now() },
-        { code: '513770', name: '港股互联', date: '2026-08-01', nav: 0.6854, ts: Date.now() },
-        { code: '513770', name: '港股互联', date: '2026-08-03', nav: 0.6900, ts: Date.now() },
-        { code: '161725', name: '白酒', date: '2025-01-10', nav: 0.9, ts: Date.now() },
-        { code: '161725', name: '白酒', date: '2025-01-12', nav: 0.905, ts: Date.now() }
-      ];
-    }
-  </script>
+        <!-- 持仓表格 -->
+        <table class="fund-table">
+            <thead>
+                <tr>
+                    <th>基金代码</th>
+                    <th>基金名称</th>
+                    <th>当前净值</th>
+                    <th>持仓份额</th>
+                    <th>持仓市值</th>
+                    <th>持仓收益</th>
+                    <th>收益率</th>
+                </tr>
+            </thead>
+            <tbody id="fundTbody"></tbody>
+        </table>
 
-  <script src="app.js"></script>
+        <!-- 合计汇总 -->
+        <div class="total-box">
+            总投入本金：<span id="totalCost">0</span> 元｜
+            总持仓市值：<span id="totalValue">0</span> 元｜
+            合计总收益：<span id="totalProfit">0</span> 元｜
+            整体收益率：<span id="totalRate">0%</span>
+        </div>
+    </div>
+
+    <!-- 全局初始化变量：仅此处定义，app.js不再重复声明state -->
+    <script>
+        // 兜底初始化数据，全局唯一，不会和JS内变量重复
+        window.FUNDS_INIT = [
+            {code:"513770",name:"港股互联",share:1200,costPrice:0.6722},
+            {code:"161725",name:"白酒",share:800,costPrice:0.9210}
+        ];
+        window.NAV_HISTORY_INIT = [
+            { code: '513770', name: '港股互联', date: '2026-08-04', nav: 0.7126, ts: Date.now() },
+            { code: '513770', name: '港股互联', date: '2026-07-22', nav: 0.6596, ts: Date.now() },
+            { code: '513770', name: '港股互联', date: '2026-07-23', nav: 0.6643, ts: Date.now() },
+            { code: '513770', name: '港股互联', date: '2026-07-17', nav: 0.6643, ts: Date.now() },
+            { code: '513770', name: '港股互联', date: '2026-07-15', nav: 0.6660, ts: Date.now() },
+            { code: '161725', name: '白酒', date: '2025-01-10', nav: 0.9, ts: Date.now() },
+            { code: '161725', name: '白酒', date: '2025-01-12', nav: 0.905, ts: Date.now() }
+        ];
+        // 全局状态 【只声明这一次！！！】
+        window.state = {
+            fundList: window.FUNDS_INIT,
+            navMap: {},
+            setting: { basePrice: 0.7, perMoney: 500 }
+        };
+    </script>
+    <!-- JS仅引入一次，内部绝不重新let state -->
+    <script src="app.js"></script>
 </body>
 </html>
