@@ -2097,44 +2097,40 @@ function saveNavHistory(list) {
 // 规则: 买入时刻在当天 9:30-15:00 → Bday = 当天; 15:00 后 → Bday = 之后最近交易日; 9:30 前 → 跨日, 算前一天
 // 简化: 用 "如果买入时间 ≥ 15:00" → Bday 是之后第一个交易日, 否则当天
 var CN_HOLIDAYS_2026 = ['2026-01-01','2026-01-02','2026-02-16','2026-02-17','2026-02-18','2026-02-19','2026-02-20','2026-04-06','2026-05-01','2026-05-04','2026-05-05','2026-06-19','2026-09-25','2026-10-01','2026-10-02','2026-10-05','2026-10-06','2026-10-07','2026-10-08','2026-12-25'];
+
+// ===== 修正后的 isTradeDay, nextTradeDay, smartBday =====
+function isTradeDay(date) {
+  const d = new Date(date + 'T00:00:00');
+  const dow = d.getDay();
+  return dow !== 0 && dow !== 6 && !CN_HOLIDAYS_2026.includes(date);
+}
+
 function nextTradeDay(date) {
-  var d = new Date(date + 'T00:00:00');
+  const d = new Date(date + 'T00:00:00');
   d.setDate(d.getDate() + 1);
   while (true) {
-    var ds = d.toISOString().split('T')[0];
-    var dow = d.getDay();
-    if (dow !== 0 && dow !== 6 && !CN_HOLIDAYS_2026.includes(ds)) return ds;
+    const ds = d.toISOString().split('T')[0];
+    if (isTradeDay(ds)) return ds;
     d.setDate(d.getDate() + 1);
   }
 }
-function isTradeDay(date) {
-  var d = new Date(date + 'T00:00:00');
-  var dow = d.getDay();
-  return dow !== 0 && dow !== 6 && !CN_HOLIDAYS_2026.includes(date);
-}
+
 function smartBday(dateStr, timeStr) {
-  // dateStr: '2026-08-03', timeStr: '21:17:18' 或 null
   if (!dateStr) return null;
   if (!timeStr) return isTradeDay(dateStr) ? dateStr : nextTradeDay(dateStr);
-  // 解析时间
-  var parts = timeStr.match(/(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
+  const parts = timeStr.match(/(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
   if (!parts) return dateStr;
-  var hh = parseInt(parts[1], 10);
-  var mm = parseInt(parts[2], 10);
-  var minutes = hh * 60 + mm;
-  // 9:30 = 570, 15:00 = 900
-  if (minutes >= 570 && minutes <= 900) {
-    // 交易时间内 → 当天, 但要确保当天是交易日
+  const hh = parseInt(parts[1], 10);
+  const mm = parseInt(parts[2], 10);
+  const minutes = hh * 60 + mm;
+  // 基金申购截止时间 15:00 (900 分钟)
+  if (minutes < 900) {
     return isTradeDay(dateStr) ? dateStr : nextTradeDay(dateStr);
-  } else if (minutes > 900) {
-    // 收盘后 → 第二天起找最近交易日
-    return nextTradeDay(dateStr);
   } else {
-    // 9:30 之前 (凌晨 0-9:30) → 算当天 (但要确认当天是交易日, 不是则下个交易日)
-    // 例: 7/17 01:32 → 当天就是 7/17 (周五, 交易日)
-    return isTradeDay(dateStr) ? dateStr : nextTradeDay(dateStr);
+    return nextTradeDay(dateStr);
   }
 }
+// ===== 修正结束 =====
 
 // ============== OCR 识别交易记录 ==============
 var ocrWorker = null;
