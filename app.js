@@ -22,6 +22,21 @@ if (typeof DEFAULT_INIT === 'undefined') {
   var DEFAULT_INIT = [];
 }
 var state;
+// 获取某笔交易应该使用的净值（优先手动输入 → 历史匹配 → 当前现价）
+function getTradePrice(f, b) {
+  // 1. 如果用户手动填了“净值”列，优先用
+  if (b.price && b.price > 0) return b.price;
+  // 2. 从 nav_history 里匹配该日期的净值
+  if (b.date) {
+    try {
+      var navHistory = JSON.parse(localStorage.getItem('nav_history') || '[]');
+      var match = navHistory.find(r => r.code === f.code && r.date === b.date);
+      if (match && match.nav) return match.nav;
+    } catch(e) {}
+  }
+  // 3. 最后用当前现价（兜底）
+  return f.price || 0;
+}
 try {
   // 优先用 data.js 里的 FUNDS_INIT, 否则空数组
   var initSource = (typeof FUNDS_INIT !== 'undefined') ? FUNDS_INIT : DEFAULT_INIT;
@@ -1098,7 +1113,10 @@ function updateCardValues(i) {
   var inv_buys = f.buys.reduce((s, b) => s + (b.amount || 0), 0);
   var invested = inv_base + inv_buys;
   var sh_base = f.initShares || 0;
-  var sh_buys = f.buys.reduce((s,b) => s + (b.amount/(b.price||1)), 0);
+  var sh_buys = f.buys.reduce((s, b) => {
+  var p = getTradePrice(f, b);
+  return p > 0 ? s + (b.amount / p) : s;
+}, 0);
   var shares = sh_base + sh_buys;
   var curPrice = f.price || 0;
   var pnl = curPrice * shares - invested;
@@ -1188,7 +1206,10 @@ function renderFund(f, i) {
   var inv_buys = f.buys.reduce((s, b) => s + (b.amount || 0), 0);
   var invested = inv_base + inv_buys;
   var sh_base = f.initShares || 0;
-  var sh_buys = f.buys.reduce((s,b) => s + (b.amount/(b.price||1)), 0);
+  var sh_buys = f.buys.reduce((s, b) => {
+  var p = getTradePrice(f, b);
+  return p > 0 ? s + (b.amount / p) : s;
+}, 0);
   var shares = sh_base + sh_buys;
   var curPrice = f.price || 0;
   var pnl = curPrice * shares - invested;
