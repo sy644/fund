@@ -511,42 +511,65 @@ function render() {
     if (h) h.classList.remove('show');
   }
   document.querySelectorAll('.tab:not(.tab-summary):not(.tab-add):not(.tab-save-btn)').forEach(btn => {
-    btn.addEventListener('touchstart', e => {
-      btn.classList.add('pressing');
-      var secs = 1.0;
+  // 存储定时器引用到元素上
+  btn.addEventListener('touchstart', function(e) {
+    e.preventDefault();  // 防止滚动干扰
+    if (this.dataset._pressing) return; // 防止重复
+    this.dataset._pressing = '1';
+    this.classList.add('pressing');
+
+    var secs = 1.0;
+    showHint('松开删除 · ' + secs.toFixed(1) + 's');
+
+    var progressInterval = setInterval(() => {
+      secs -= 0.1;
+      if (secs <= 0) { clearInterval(progressInterval); return; }
       showHint('松开删除 · ' + secs.toFixed(1) + 's');
-      pressProgress = setInterval(() => {
-        secs -= 0.1;
-        if (secs <= 0) { clearInterval(pressProgress); return; }
-        showHint('松开删除 · ' + secs.toFixed(1) + 's');
-      }, 100);
-      pressTimer = setTimeout(() => {
-        clearInterval(pressProgress);
-        btn.classList.remove('pressing');
-        hideHint();
-        var idx = parseInt(btn.dataset.tab);
-        if (!isNaN(idx) && state[idx]) {
-          showModal({
-            title: '删除基金',
-            message: '确定要删除 ' + state[idx].name + '?\n所有交易记录将丢失',
-            okText: '删除',
-            cancelText: '取消',
-          }).then(ok => {
-            if (ok) deleteFund(idx);
-          });
-        }
-      }, 1000);
-    }, {passive: true});
-    var cancel = () => {
-      clearTimeout(pressTimer);
-      clearInterval(pressProgress);
-      btn.classList.remove('pressing');
+    }, 100);
+
+    var timer = setTimeout(() => {
+      clearInterval(progressInterval);
+      this.classList.remove('pressing');
+      delete this.dataset._pressing;
       hideHint();
-    };
-    btn.addEventListener('touchend', cancel);
-    btn.addEventListener('touchmove', cancel);
-    btn.addEventListener('touchcancel', cancel);
+      var idx = parseInt(this.dataset.tab);
+      if (!isNaN(idx) && state[idx]) {
+        showModal({
+          title: '删除基金',
+          message: '确定要删除 ' + state[idx].name + '?\n所有交易记录将丢失',
+          okText: '删除',
+          cancelText: '取消',
+        }).then(ok => {
+          if (ok) deleteFund(idx);
+        });
+      }
+    }, 1000);
+
+    // 保存引用以便取消
+    this._deleteTimer = timer;
+    this._deleteProgress = progressInterval;
+  }, {passive: false});
+
+  // 取消函数（统一清除）
+  const cancelDelete = function(e) {
+    if (!this.dataset._pressing) return;
+    clearTimeout(this._deleteTimer);
+    clearInterval(this._deleteProgress);
+    this.classList.remove('pressing');
+    delete this.dataset._pressing;
+    hideHint();
+  };
+
+  btn.addEventListener('touchend', cancelDelete);
+  btn.addEventListener('touchmove', cancelDelete);
+  btn.addEventListener('touchcancel', cancelDelete);
+
+  // （可选）鼠标长按支持
+  btn.addEventListener('mousedown', function(e) {
+    // 简单模拟：调用 touchstart 逻辑，但需要区分设备，这里略
+    // 实际可复用相同代码，但为简化，可以使用相同的 touch 逻辑，mousedown 也会触发 touchstart 在移动端
   });
+});
   if (activeTab < state.length) bindFundEvents(state[activeTab], activeTab);
   else bindSummaryEvents();
   if (activeTab < 0 || activeTab > state.length) {
@@ -1939,7 +1962,7 @@ async function addNewFund() {
 }
 
 function deleteFund(idx) {
-  if (!confirm('确定删除 ' + state[idx].name + '?\n所有交易记录将丢失')) return;
+  // 不再使用原生 confirm，因为调用前已经由 showModal 确认
   var prev = JSON.stringify(state);
   state.splice(idx, 1);
   if (activeTab >= state.length) activeTab = Math.max(0, state.length - 1);
