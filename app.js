@@ -24,9 +24,7 @@ if (typeof DEFAULT_INIT === 'undefined') {
 var state;
 // 获取某笔交易应该使用的净值（优先手动输入 → 历史匹配 → 当前现价）
 function getTradePrice(f, b) {
-  // 1. 如果用户手动填了“净值”列，优先用
   if (b.price && b.price > 0) return b.price;
-  // 2. 从 nav_history 里匹配该日期的净值
   if (b.date) {
     try {
       var navHistory = JSON.parse(localStorage.getItem('nav_history') || '[]');
@@ -34,22 +32,18 @@ function getTradePrice(f, b) {
       if (match && match.nav) return match.nav;
     } catch(e) {}
   }
-  // 3. 最后用当前现价（兜底）
   return f.price || 0;
 }
 try {
-  // 优先用 data.js 里的 FUNDS_INIT, 否则空数组
   var initSource = (typeof FUNDS_INIT !== 'undefined') ? FUNDS_INIT : DEFAULT_INIT;
   var s = localStorage.getItem('funds');
   state = s ? JSON.parse(s) : JSON.parse(JSON.stringify(initSource));
-  // 初始化 nav_history: 首次加载或为空时, 用 demo 的 NAV_HISTORY_INIT
   if (typeof NAV_HISTORY_INIT !== 'undefined' && Array.isArray(NAV_HISTORY_INIT)) {
     var cur = (() => { try { return JSON.parse(localStorage.getItem('nav_history') || '[]'); } catch(e) { return []; }})();
     if (!Array.isArray(cur) || cur.length === 0) {
       localStorage.setItem('nav_history', JSON.stringify(NAV_HISTORY_INIT));
     }
   }
-  // 数据迁移: 旧 buys 缺 type 字段, 负数 amount 自动归类为卖出
   if (Array.isArray(state)) {
     state.forEach(f => {
       if (Array.isArray(f.buys)) {
@@ -59,7 +53,6 @@ try {
       }
     });
   }
-  // URL ?fund=<code> 支持 nav.html 双击跳转
   try {
     var qCode = new URLSearchParams(location.search).get('fund');
     if (qCode && Array.isArray(state)) {
@@ -78,12 +71,10 @@ try {
 
 async function fetchNAV(code) {
   if (!code) return null;
-  // 主: 天天基金最新净值 (JSONP,专门给前端用,CORS 友好)
   try {
     var url1 = `https://fundgz.1234567.com.cn/js/${code}.js?rt=${Date.now()}`;
     var r1 = await fetch(url1);
     var t1 = await r1.text();
-    // 格式: jsonpgz({"fundcode":"513770","name":"港股互联","jzrq":"2025-xx-xx","dwjz":"0.6854","gsz":"0.6854","gszzl":"-13.2","gztime":"..."});
     var m1 = t1.match(/jsonpgz\(([^)]+)\)/);
     if (m1) {
       var d = JSON.parse(m1[1]);
@@ -93,7 +84,6 @@ async function fetchNAV(code) {
     }
   } catch (e) { console.warn('天天基金抓取失败', e); }
 
-  // 备: 东方财富 (备用接口)
   try {
     var url2 = `https://fund.eastmoney.com/f10/FundNetValue.ashx?type=latest&code=${code}&_=${Date.now()}`;
     var r2 = await fetch(url2);
@@ -109,7 +99,6 @@ async function fetchNAV(code) {
     }
   } catch (e) { console.warn('东方财富抓取失败', e); }
 
-  // 备2: 腾讯基金接口
   try {
     var url3 = `https://qt.gtimg.cn/q=jj${code}&_=${Date.now()}`;
     var r3 = await fetch(url3);
@@ -181,31 +170,18 @@ function updateSaveBadge() {
 
 var main = document.getElementById('funds');
 
-// 注入自定义动画样式(持有收益/收益率闪烁 + 滑选日期 + 按钮优化)
 (function injectAnimStyles() {
   if (document.getElementById('fund-anim-style')) return;
   var s = document.createElement('style');
   s.id = 'fund-anim-style';
   s.textContent = `
     @keyframes pnlPulse {
-      0%, 100% {
-        transform: scale(1);
-        box-shadow: 0 0 0 0 var(--pnl-color, #dc2626);
-        filter: brightness(1);
-      }
-      50% {
-        transform: scale(1.04);
-        box-shadow: 0 0 18px 4px var(--pnl-color, #dc2626);
-        filter: brightness(1.25);
-      }
+      0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 var(--pnl-color, #dc2626); filter: brightness(1); }
+      50% { transform: scale(1.04); box-shadow: 0 0 18px 4px var(--pnl-color, #dc2626); filter: brightness(1.25); }
     }
-    .pnl-flash {
-      transition: all .2s ease;
-    }
-    /* 滑选日期控件 (xx/xx 格式) */
+    .pnl-flash { transition: all .2s ease; }
     .bdate-slider {
-      appearance: none;
-      -webkit-appearance: none;
+      appearance: none; -webkit-appearance: none;
       background: rgba(0,240,255,0.08);
       border: 1px solid rgba(0,240,255,0.25);
       color: #00f0ff;
@@ -224,45 +200,29 @@ var main = document.getElementById('funds');
       filter: invert(1) hue-rotate(170deg) brightness(1.5);
       cursor: pointer;
     }
-    /* 顶部按钮优化(更柔和的颜色) */
-    .add-btn, .del-btn, .buy-toggle-btn {
-      transition: all .2s ease;
-    }
-    /* 添加/撤销/重做按钮 - 浅灰蓝柔和配色 */
+    .add-btn, .del-btn, .buy-toggle-btn { transition: all .2s ease; }
     .add-btn {
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
+      width: 36px; height: 36px; border-radius: 50%;
       background: rgba(0,240,255,0.08);
       color: #67e8f9;
       border: 1.5px solid rgba(0,240,255,0.3);
-      font-size: 18px;
-      font-weight: 700;
+      font-size: 18px; font-weight: 700;
       cursor: pointer;
       display: inline-flex;
-      align-items: center;
-      justify-content: center;
+      align-items: center; justify-content: center;
       margin-right: 6px;
       box-shadow: none;
     }
-    .add-btn:hover {
-      background: rgba(0,240,255,0.18);
-      box-shadow: 0 0 8px rgba(0,240,255,0.25);
-    }
-    /* 滑选删除模式的红色按钮 - 颜色更柔和 */
+    .add-btn:hover { background: rgba(0,240,255,0.18); box-shadow: 0 0 8px rgba(0,240,255,0.25); }
     .buy-toggle-btn {
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
+      width: 36px; height: 36px; border-radius: 50%;
       background: rgba(255,255,255,0.06);
       color: #94a3b8;
       border: 1.5px solid rgba(148,163,184,0.35);
-      font-size: 18px;
-      font-weight: 700;
+      font-size: 18px; font-weight: 700;
       cursor: pointer;
       display: inline-flex;
-      align-items: center;
-      justify-content: center;
+      align-items: center; justify-content: center;
       margin-right: 6px;
     }
     .buy-toggle-btn:hover { background: rgba(148,163,184,0.15); }
@@ -426,7 +386,7 @@ function triggerRefresh() {
   }
 }
 document.addEventListener('DOMContentLoaded', setupPullToRefresh);
-// activeTab 持久化: 刷新页面后恢复上次的 tab
+
 function getSavedActiveTab() {
   try {
     var s = localStorage.getItem('activeTab');
@@ -438,6 +398,7 @@ function saveActiveTab(t) {
 }
 var activeTab = getSavedActiveTab();
 
+// ==================== 核心渲染函数（已修复长按删除干扰点击） ====================
 function render() {
   var html = '<div class="tab-bar">';
   html += '<button class="tab-add tab-save-btn" id="tabSaveBtn" title="导出收益表">📊</button>';
@@ -469,18 +430,23 @@ function render() {
   else html += renderSummary();
   html += '</div>';
   main.innerHTML = html;
+
+  // ---------- 单击切换（增加防误触判断） ----------
   document.querySelectorAll('.tab').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+      if (btn.dataset._pressing) return; // 长按中忽略点击
       activeTab = parseInt(btn.dataset.tab);
       saveActiveTab(activeTab);
       render();
     });
   });
+
   document.querySelector('.tab-add[data-add="1"]')?.addEventListener('click', addNewFund);
   document.getElementById('tabSaveBtn')?.addEventListener('click', saveData);
   document.getElementById('refreshBtn')?.addEventListener('click', () => {
     location.href = 'nav.html';
   });
+
   document.querySelectorAll('.sname-input').forEach(inp => {
     inp.addEventListener('blur', () => {
       var fidx = parseInt(inp.dataset.fidx);
@@ -494,6 +460,7 @@ function render() {
     inp.addEventListener('focus', () => { inp.style.borderColor = 'var(--neon-cyan)'; });
     inp.addEventListener('blur', () => { inp.style.borderColor = 'transparent'; });
   });
+
   var pressTimer = null, pressProgress = null;
   function showHint(t) {
     var h = document.getElementById('tabHint');
@@ -510,66 +477,60 @@ function render() {
     var h = document.getElementById('tabHint');
     if (h) h.classList.remove('show');
   }
+
+  // ---------- 长按删除（不阻止点击） ----------
   document.querySelectorAll('.tab:not(.tab-summary):not(.tab-add):not(.tab-save-btn)').forEach(btn => {
-  // 存储定时器引用到元素上
-  btn.addEventListener('touchstart', function(e) {
-    e.preventDefault();  // 防止滚动干扰
-    if (this.dataset._pressing) return; // 防止重复
-    this.dataset._pressing = '1';
-    this.classList.add('pressing');
+    btn.addEventListener('touchstart', function(e) {
+      // 不调用 preventDefault()，保证点击事件正常触发
+      if (this.dataset._pressing) return;
+      this.dataset._pressing = '1';
+      this.classList.add('pressing');
 
-    var secs = 1.0;
-    showHint('松开删除 · ' + secs.toFixed(1) + 's');
-
-    var progressInterval = setInterval(() => {
-      secs -= 0.1;
-      if (secs <= 0) { clearInterval(progressInterval); return; }
+      var secs = 1.0;
       showHint('松开删除 · ' + secs.toFixed(1) + 's');
-    }, 100);
 
-    var timer = setTimeout(() => {
-      clearInterval(progressInterval);
+      var progressInterval = setInterval(() => {
+        secs -= 0.1;
+        if (secs <= 0) { clearInterval(progressInterval); return; }
+        showHint('松开删除 · ' + secs.toFixed(1) + 's');
+      }, 100);
+
+      var timer = setTimeout(() => {
+        clearInterval(progressInterval);
+        this.classList.remove('pressing');
+        delete this.dataset._pressing;
+        hideHint();
+        var idx = parseInt(this.dataset.tab);
+        if (!isNaN(idx) && state[idx]) {
+          showModal({
+            title: '删除基金',
+            message: '确定要删除 ' + state[idx].name + '?\n所有交易记录将丢失',
+            okText: '删除',
+            cancelText: '取消',
+          }).then(ok => {
+            if (ok) deleteFund(idx);
+          });
+        }
+      }, 1000);
+
+      this._deleteTimer = timer;
+      this._deleteProgress = progressInterval;
+    }, {passive: true});  // 改为 passive: true，不阻止默认行为
+
+    const cancelDelete = function(e) {
+      if (!this.dataset._pressing) return;
+      clearTimeout(this._deleteTimer);
+      clearInterval(this._deleteProgress);
       this.classList.remove('pressing');
       delete this.dataset._pressing;
       hideHint();
-      var idx = parseInt(this.dataset.tab);
-      if (!isNaN(idx) && state[idx]) {
-        showModal({
-          title: '删除基金',
-          message: '确定要删除 ' + state[idx].name + '?\n所有交易记录将丢失',
-          okText: '删除',
-          cancelText: '取消',
-        }).then(ok => {
-          if (ok) deleteFund(idx);
-        });
-      }
-    }, 1000);
+    };
 
-    // 保存引用以便取消
-    this._deleteTimer = timer;
-    this._deleteProgress = progressInterval;
-  }, {passive: false});
-
-  // 取消函数（统一清除）
-  const cancelDelete = function(e) {
-    if (!this.dataset._pressing) return;
-    clearTimeout(this._deleteTimer);
-    clearInterval(this._deleteProgress);
-    this.classList.remove('pressing');
-    delete this.dataset._pressing;
-    hideHint();
-  };
-
-  btn.addEventListener('touchend', cancelDelete);
-  btn.addEventListener('touchmove', cancelDelete);
-  btn.addEventListener('touchcancel', cancelDelete);
-
-  // （可选）鼠标长按支持
-  btn.addEventListener('mousedown', function(e) {
-    // 简单模拟：调用 touchstart 逻辑，但需要区分设备，这里略
-    // 实际可复用相同代码，但为简化，可以使用相同的 touch 逻辑，mousedown 也会触发 touchstart 在移动端
+    btn.addEventListener('touchend', cancelDelete);
+    btn.addEventListener('touchmove', cancelDelete);
+    btn.addEventListener('touchcancel', cancelDelete);
   });
-});
+
   if (activeTab < state.length) bindFundEvents(state[activeTab], activeTab);
   else bindSummaryEvents();
   if (activeTab < 0 || activeTab > state.length) {
@@ -577,6 +538,8 @@ function render() {
   }
   updateTime();
 }
+
+// ==================== 其余函数保持不变 ====================
 
 function bindFundEvents(f, i) {
   var priceIn = document.getElementById(`price-${i}`);
@@ -1137,9 +1100,9 @@ function updateCardValues(i) {
   var invested = inv_base + inv_buys;
   var sh_base = f.initShares || 0;
   var sh_buys = f.buys.reduce((s, b) => {
-  var p = getTradePrice(f, b);
-  return p > 0 ? s + (b.amount / p) : s;
-}, 0);
+    var p = getTradePrice(f, b);
+    return p > 0 ? s + (b.amount / p) : s;
+  }, 0);
   var shares = sh_base + sh_buys;
   var curPrice = f.price || 0;
   var pnl = curPrice * shares - invested;
@@ -1230,9 +1193,9 @@ function renderFund(f, i) {
   var invested = inv_base + inv_buys;
   var sh_base = f.initShares || 0;
   var sh_buys = f.buys.reduce((s, b) => {
-  var p = getTradePrice(f, b);
-  return p > 0 ? s + (b.amount / p) : s;
-}, 0);
+    var p = getTradePrice(f, b);
+    return p > 0 ? s + (b.amount / p) : s;
+  }, 0);
   var shares = sh_base + sh_buys;
   var curPrice = f.price || 0;
   var pnl = curPrice * shares - invested;
