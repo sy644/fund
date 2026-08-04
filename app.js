@@ -1961,7 +1961,10 @@ function nextTradeDay(date) {
   var d = new Date(date + 'T00:00:00');
   d.setDate(d.getDate() + 1);
   while (true) {
-    var ds = d.toISOString().split('T')[0];
+    var year = d.getFullYear();
+    var month = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    var ds = year + '-' + month + '-' + day;
     var dow = d.getDay();
     var holidays = getHolidaysForDate(ds);
     if (dow !== 0 && dow !== 6 && !holidays.includes(ds)) {
