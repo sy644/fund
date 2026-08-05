@@ -553,22 +553,11 @@ function render() {
   // 取消函数（统一清除）
   const cancelDelete = function(e) {
     if (!this.dataset._pressing) return;
-    // 记录是否是短按（用于 touchend 时补发 tab 切换）
-    var wasShortPress = e && e.type === 'touchend';
     clearTimeout(this._deleteTimer);
     clearInterval(this._deleteProgress);
     this.classList.remove('pressing');
     delete this.dataset._pressing;
     hideHint();
-    // touchstart 已 preventDefault 阻断了 click,这里短按手动切换 tab
-    if (wasShortPress) {
-      var idx = parseInt(this.dataset.tab);
-      if (!isNaN(idx)) {
-        activeTab = idx;
-        saveActiveTab(activeTab);
-        render();
-      }
-    }
   };
 
   btn.addEventListener('touchend', cancelDelete);
@@ -1148,8 +1137,11 @@ function updateCardValues(i) {
   var invested = inv_base + inv_buys;
   var sh_base = f.initShares || 0;
   var sh_buys = f.buys.reduce((s, b) => {
-  var p = getTradePrice(f, b);
-  return p > 0 ? s + (b.amount / p) : s;
+  if (!b.date) return s;
+  var navHistory = (() => { try { return JSON.parse(localStorage.getItem('nav_history') || '[]'); } catch(e) { return []; }})();
+  var matched = navHistory.find(r => r.code === f.code && r.date === b.date);
+  var price = matched ? matched.nav : (f.price || 0);
+  return price > 0 ? s + (b.amount / price) : s;
 }, 0);
   var shares = sh_base + sh_buys;
   var curPrice = f.price || 0;
@@ -1241,8 +1233,11 @@ function renderFund(f, i) {
   var invested = inv_base + inv_buys;
   var sh_base = f.initShares || 0;
   var sh_buys = f.buys.reduce((s, b) => {
-  var p = getTradePrice(f, b);
-  return p > 0 ? s + (b.amount / p) : s;
+  if (!b.date) return s;
+  var navHistory = (() => { try { return JSON.parse(localStorage.getItem('nav_history') || '[]'); } catch(e) { return []; }})();
+  var matched = navHistory.find(r => r.code === f.code && r.date === b.date);
+  var price = matched ? matched.nav : (f.price || 0);
+  return price > 0 ? s + (b.amount / price) : s;
 }, 0);
   var shares = sh_base + sh_buys;
   var curPrice = f.price || 0;
