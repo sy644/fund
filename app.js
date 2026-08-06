@@ -77,7 +77,7 @@ async function fetchNAV(code) {
       var date = d.jzrq || d.gztime || '';
       if (nav > 0) return { nav, date };
     }
-  } catch (e) { console.warn('天天基金抓取失败', e); }
+  } catch (e) { console.warn('基金抓取失败', e); }
   try {
     var url2 = `https://fund.eastmoney.com/f10/FundNetValue.ashx?type=latest&code=${code}&_=${Date.now()}`;
     var r2 = await fetch(url2);
