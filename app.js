@@ -430,7 +430,6 @@ function render() {
     activeTab = state.length > 0 ? state.length : 0;
   }
   updateTime();
-  document.querySelectorAll(".range-track").forEach(updateRangeTrack);
 }
 // ==================== 跑道 + 跑步小人 ====================
 function updateRangeTrack(track) {
@@ -1745,41 +1744,7 @@ function renderFund(f, i) {
         </div>
       </div>
 
-      ${(() => {
-        // ===== 价格区间 (跑道 + 小人 + 树 + 星星) =====
-        var rLow = parseFloat(f.priceLow) || 0;
-        var rMid = parseFloat(f.priceMid) || 0;
-        var rHigh = parseFloat(f.priceHigh) || 0;
-        var rNow = parseFloat(f.price) || 0;
-        if (rLow >= rHigh || rNow <= 0) return '';
-        return `
-      <div class="range-bar-section">
-        <div class="range-track"
-             data-low="${rLow}" data-mid="${rMid}" data-high="${rHigh}" data-now="${rNow}"
-             data-init-shares="${f.initShares}" data-base-price="${f.basePrice}" data-code="${f.code}">
-          <div class="range-lane"></div>
-          <div class="range-mid-line"></div>
-          <div class="range-midval-line"></div>
-          <div class="range-ticks">
-            <span class="range-tree" style="left:10%"><span class="tree-emoji">🌱</span></span>
-            <span class="range-tree" style="left:20%"><span class="tree-emoji">🌿</span></span>
-            <span class="range-tree" style="left:30%"><span class="tree-emoji">🌳</span></span>
-            <span class="range-tree" style="left:50%"><span class="tree-emoji">🌲</span></span>
-          </div>
-          <div class="price-star">
-            <span class="star-arrow">△</span>
-            <span class="star-label">${rNow.toFixed(4)}</span>
-          </div>
-          <div class="runner">
-            <span class="runner-emoji">🏃</span>
-            <span class="runner-dust">💨</span>
-          </div>
-          <span class="range-end range-end-start">低</span>
-          <span class="range-end range-end-end">高</span>
-        </div>
-      </div>
-        `;
-      })()}
+      
       <div class="param-section">
         <div class="section-title">参数设置</div>
         <div class="param-grid-table">
