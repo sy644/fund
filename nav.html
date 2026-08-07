@@ -311,7 +311,7 @@ body::before {
 <script>
 const FUNDS_KEY = 'funds';
 const NAV_KEY = 'nav_history';
-let activeFundCode = null; // 当前选中的基金
+let activeFundCode = null;
 function getFunds() { try { return JSON.parse(localStorage.getItem(FUNDS_KEY) || '[]'); } catch(e) { return []; } }
 function getNavHistory() { try { return JSON.parse(localStorage.getItem(NAV_KEY) || '[]'); } catch(e) { return []; } }
 function saveNavHistory(list) { localStorage.setItem(NAV_KEY, JSON.stringify(list)); }
@@ -326,7 +326,6 @@ function renderFundCards() {
     box.innerHTML = '<div style="color:var(--text-dim);font-size:12px;padding:10px">暂无基金</div>';
     return;
   }
-  // 数量统计
   const counts = {};
   allHistory.forEach(r => { counts[r.code] = (counts[r.code] || 0) + 1; });
   if (!activeFundCode || !funds.find(f => f.code === activeFundCode)) {
@@ -347,11 +346,9 @@ function renderFundCards() {
       renderFundCards();
       renderHistory();
     };
-    // 双击: 跳转到对应加仓界面 (主页 buy-table)
     c.ondblclick = () => {
       const code = c.dataset.code;
       activeFundCode = code;
-      // 检测主页是否已有该基金数据 (在 localStorage.funds 里查 buys 数)
       let hasData = false;
       try {
         const fundsRaw = localStorage.getItem('funds');
@@ -363,7 +360,6 @@ function renderFundCards() {
       } catch(e) {}
       const doJump = () => { location.href = 'index.html?fund=' + encodeURIComponent(code); };
       if (hasData) {
-        // 弹窗确认是否覆盖 (用户描述: 录入数据存在时弹窗)
         const overlay = document.createElement('div');
         overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)';
         const box = document.createElement('div');
@@ -384,7 +380,6 @@ function renderFundCards() {
         box.querySelector('#jmpOk').onclick = () => { document.body.removeChild(overlay); doJump(); };
         overlay.onclick = (e) => { if (e.target === overlay) document.body.removeChild(overlay); };
       } else {
-        // 无数据直接跳转
         doJump();
       }
     };
@@ -411,7 +406,6 @@ function renderFundSelect() {
 // ============== 历史表 ==============
 function renderHistory() {
   const all = getNavHistory();
-  // 严格按日期降序排序(最新在上)
   const list = all.filter(r => r.code === activeFundCode).slice().sort((a, b) => b.date.localeCompare(a.date));
   const box = document.getElementById('historyBox');
   const f = getFunds().find(x => x.code === activeFundCode);
@@ -423,7 +417,6 @@ function renderHistory() {
   }
   const rows = list.map((r, i) => {
     const realIdx = all.indexOf(r);
-    // 短日期: 8/3
     const short = (() => {
       const p = r.date.split('-');
       return p.length === 3 ? parseInt(p[1],10) + '/' + parseInt(p[2],10) : r.date;
@@ -540,7 +533,6 @@ async function loadTesseract() {
   });
 }
 
-// ---- 修复后的预处理：只做放大 + 轻微灰度对比，不破坏文字 ----
 function preprocessImage(src) {
   return new Promise((resolve) => {
     const img = new Image();
@@ -552,7 +544,6 @@ function preprocessImage(src) {
       canvas.width = Math.round(img.width * scale);
       canvas.height = Math.round(img.height * scale);
       const ctx = canvas.getContext('2d');
-      // 灰度 + 轻微对比度，保留文字细节
       ctx.filter = 'grayscale(1) contrast(1.2) brightness(1.05)';
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       resolve(canvas.toDataURL('image/png'));
@@ -562,7 +553,6 @@ function preprocessImage(src) {
   });
 }
 
-// ---- 修复后的解析：逐行匹配日期 + 净值 ----
 function parseDateNavRows(text) {
   const lines = text.split(/\n+/).map(l => l.trim()).filter(Boolean);
   const results = [];
@@ -585,7 +575,6 @@ function parseDateNavRows(text) {
   return results;
 }
 
-// ---- 修复后的识别主流程 ----
 async function recognizeImage() {
   if (!currentImage) return;
   const recBtn = document.getElementById('recBtn');
@@ -601,11 +590,10 @@ async function recognizeImage() {
     overlayText.textContent = '正在识别图片…';
     if (!tesseractWorker) {
       tesseractWorker = await Tesseract.createWorker('eng', 1, {
-        tessedit_pageseg_mode: '6',          // 单块文本，适合列表
+        tessedit_pageseg_mode: '6',
         tessedit_char_whitelist: '0123456789.-/ '
       });
     }
-    // 直接使用原图（预处理好后再传）
     const processed = await preprocessImage(currentImage);
     const { data } = await tesseractWorker.recognize(processed);
     overlay.classList.remove('show');
@@ -637,29 +625,25 @@ async function recognizeImage() {
 }
 document.getElementById('recBtn').onclick = recognizeImage;
 
-// ---------- 确认对话框（无改动） ----------
+// ---------- 确认对话框（去掉自动加1修正） ----------
 function showNavConfirmDialog(rows, code, name) {
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:99999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);padding:16px;box-sizing:border-box';
   const box = document.createElement('div');
   box.style.cssText = 'background:linear-gradient(135deg, rgba(20,26,56,0.98), rgba(10,16,36,0.98));border:1.5px solid #00f0ff;border-radius:18px;padding:18px;min-width:340px;max-width:95vw;max-height:85vh;overflow-y:auto;box-shadow:0 0 32px rgba(0,240,255,0.4);color:#fff;font-family:-apple-system,sans-serif';
-  const vals = rows.map(r => r.nav);
-  const median = vals.sort((a,b)=>a-b)[Math.floor(vals.length/2)];
-  const shouldShift = median >= 0.5 && median < 1.0;
-  const titleExtra = shouldShift ? '<div style="color:#fbbf24;font-size:11px;margin:6px 0 10px">⚠️ 检测到常见 OCR 错误, 已自动加 1 (可手动修改)</div>' : '';
+  
+  // 直接显示原始识别结果，不加任何修正
   const rowsHtml = rows.map((r, i) => {
-    const correctedNav = shouldShift ? (r.nav + 1).toFixed(4) : r.nav.toFixed(4);
-    const oldVal = shouldShift ? r.nav.toFixed(4) : null;
-    return `<div style="display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:8px;margin-bottom:6px;align-items:center">
+    const navStr = r.nav.toFixed(4);
+    return `<div style="display:grid;grid-template-columns:1.2fr 1fr;gap:8px;margin-bottom:6px;align-items:center">
       <span style="color:#67e8f9;font-family:monospace;font-size:12px">${r.date}</span>
-      <input type="number" step="0.0001" value="${correctedNav}" data-idx="${i}" class="nav-input" style="background:rgba(0,0,0,0.4);border:1px solid #00f0ff;border-radius:6px;padding:6px;color:#fff;font-size:13px;font-family:monospace;text-align:right">
-      ${oldVal ? `<span style="color:#93a3bd;font-size:10px;font-family:monospace">原 ${oldVal}</span>` : '<span></span>'}
+      <input type="number" step="0.0001" value="${navStr}" data-idx="${i}" class="nav-input" style="background:rgba(0,0,0,0.4);border:1px solid #00f0ff;border-radius:6px;padding:6px;color:#fff;font-size:13px;font-family:monospace;text-align:right">
     </div>`;
   }).join('');
+
   box.innerHTML = `
     <div style="font-size:15px;font-weight:800;color:#00f0ff;text-align:center;margin-bottom:6px;text-shadow:0 0 8px rgba(0,240,255,0.5);letter-spacing:1px">📊 净值识别确认</div>
-    <div style="font-size:11px;color:#cbd5e1;text-align:center;margin-bottom:8px">已识别 <b style="color:#fbbf24">${rows.length}</b> 条净值, 请核对 (OCR 经常把 1.X 错识成 0.X)</div>
-    ${titleExtra}
+    <div style="font-size:11px;color:#cbd5e1;text-align:center;margin-bottom:8px">已识别 <b style="color:#fbbf24">${rows.length}</b> 条净值，可手动修改数值</div>
     <div style="background:rgba(0,0,0,0.3);border-radius:8px;padding:8px;margin-bottom:12px;max-height:50vh;overflow-y:auto">
       ${rowsHtml}
     </div>
