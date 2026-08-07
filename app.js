@@ -1384,22 +1384,22 @@ function updateCardValues(i) {
     return price > 0 ? s + (Math.abs(b.amount) / price) : s;
   }, 0);
   var shares = sh_base + sh_buys;
-  // 收益: (Sday 净值 - Bday 净值) × Bday 份额, 只算 Sday 非空的 (没有 Sday 跳过)
+  // 收益: 金额 × 涨幅 = amount × (Sday 净值 - Bday 净值) / Bday 净值
+  // 只算 Sday 非空 + Sday 有数据
   var navHistory = (() => { try { return JSON.parse(localStorage.getItem("nav_history") || "[]"); } catch(e) { return []; }})();
   var totalPnl = (f.buys || []).reduce(function(s, b) {
-    if (!b.sday || b.sday === "") return s; // 没 Sday 不算
-    // 找 Sday 那天的净值
+    if (!b.sday || b.sday === "") return s;
     var sdayRecord = navHistory.find(function(r) { return r.code === f.code && r.date === b.sday; });
-    if (!sdayRecord || sdayRecord.nav == null) return s; // Sday 没数据也不算
-    // Bday 净值优先用 b.price, 否则用 Bday 那天的净值
+    if (!sdayRecord || sdayRecord.nav == null) return s;
+    // Bday 净值: 优先 b.price, 否则查 nav_history
     var buyNav = b.price;
     if (buyNav == null || buyNav <= 0) {
       var bdayRecord = navHistory.find(function(r) { return r.code === f.code && r.date === b.date; });
       buyNav = bdayRecord ? bdayRecord.nav : 0;
     }
     if (buyNav <= 0) return s;
-    var buyShares = (Math.abs(b.amount) || 0) / buyNav;
-    return s + (sdayRecord.nav - buyNav) * buyShares;
+    // 金额 × 涨幅 (涨幅 = (Sday - Bday) / Bday)
+    return s + (b.amount || 0) * (sdayRecord.nav - buyNav) / buyNav;
   }, 0);
   var curPrice = f.price || 0;
   var pnl = curPrice * shares - invested;
@@ -2836,4 +2836,6 @@ function getNavHistory() {
 }
 function saveNavHistory(list) {
   localStorage.setItem('nav_history', JSON.stringify(list));
+}
+setItem('nav_history', JSON.stringify(list));
 }
