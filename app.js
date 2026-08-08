@@ -1,5 +1,6 @@
-// === 完整 app.js 第 1 部分 ===
+// === 完整 app.js ===
 // 包含：全局错误兜底、数据初始化、净值抓取、刷新、保存、样式注入、档位计算、下拉刷新、render 函数
+// 修改点：交易记录合计仅统计买卖记录（不含初始份额），新增卖出按钮（-），卖出时按份额录入自动算金额
 
 // 全局错误兜底 - 避免黑屏静默失败
 window.addEventListener('error', e => {
@@ -292,9 +293,8 @@ function getSavedActiveTab() { try { var s = localStorage.getItem('activeTab'); 
 function saveActiveTab(t) { try { localStorage.setItem('activeTab', String(t)); } catch(e){} }
 var activeTab = getSavedActiveTab();
 
-// ==================== 主渲染函数（已修复长按干扰点击） ====================
+// ==================== 主渲染函数 ====================
 function render() {
-  // 顶部 tab-bar 删了, 切到下边
   var html = '<div class="tab-content">';
   if (activeTab < 0 || activeTab > state.length) {
     activeTab = state.length > 0 ? state.length : 0;
@@ -310,21 +310,16 @@ function render() {
   if (activeTab < state.length) html += renderFund(state[activeTab], activeTab);
   else html += renderSummary();
   html += '</div>';
-  // 底部 dock: 保存 / 导表 / | / 汇总 / 港股 / 证券 / +
   html += '<div class="dock-bar">';
-  // 工具按钮: 保存(刷新) + 导表 (用 .tab 样式, 不占位)
   html += '<button class="dock-icon-only" id="refreshBtn" title="保存+刷新">✍</button>';
   html += '<button class="dock-icon-only" id="tabSaveBtn" title="导出收益表">📊</button>';
-  // 分隔
   html += '<span class="dock-sep"></span>';
-  // 切换: 沿用原 .tab 样式
   html += '<button class="tab tab-summary ' + (activeTab===state.length?'active':'') + '" data-tab="' + state.length + '">汇总</button>';
   state.forEach((f, i) => {
     html += `<button class="tab ${i===activeTab?'active':''}" data-tab="${i}">${f.name}</button>`;
   });
   html += '<button class="tab-add" data-add="1" title="新增基金">+</button>';
   html += '</div>';
-  // 滚轮选择器容器 (3列联动, 数字输入统一用这个)
   html += '<div class="wheel-mask" id="wheelMask">';
   html += '  <div class="wheel-sheet">';
   html += '    <div class="wheel-header">';
@@ -340,7 +335,6 @@ function render() {
   html += '</div>';
   main.innerHTML = html;
 
-  // 单击切换（防误触）
   document.querySelectorAll('.tab').forEach(btn => {
     btn.addEventListener('click', (e) => {
       if (btn.dataset._pressing) return;
@@ -379,7 +373,6 @@ function render() {
     if (h) h.classList.remove('show');
   }
 
-  // 长按删除（已修复，不阻止点击）
   document.querySelectorAll('.tab:not(.tab-summary):not(.tab-add):not(.tab-save-btn)').forEach(btn => {
     btn.addEventListener('touchstart', function(e) {
       if (this.dataset._pressing) return;
@@ -432,7 +425,7 @@ function render() {
   updateTime();
   document.querySelectorAll(".range-track").forEach(updateRangeTrack);
 }
-// ==================== 跑道 + 跑步小人 ====================
+
 function updateRangeTrack(track) {
   var low = parseFloat(track.dataset.low) || 0;
   var mid = parseFloat(track.dataset.mid) || 0;
@@ -467,7 +460,6 @@ function updateRangeTrack(track) {
         return pnav > 0 ? s + (b.amount / pnav) : s;
       } catch(e) { return s; }
     }, 0);
-    // 收益 = (Sday 净值 - Bday 净值) × Bday 份额, 只算 Sday 非空的
     var totalPnl = (f.buys || []).reduce(function(s, b) {
       if (!b.sday || b.sday === "") return s;
       var buyNav = b.price || f.basePrice || 0;
@@ -513,93 +505,9 @@ function updateRangeTrack(track) {
   }
 }
 
-// ==================== 跑道 + 跑步小人 (F 方案 7 档) ====================
-function updateRangeTrack(track) {
-  var low = parseFloat(track.dataset.low) || 0;
-  var mid = parseFloat(track.dataset.mid) || 0;
-  var high = parseFloat(track.dataset.high) || 0;
-  var now = parseFloat(track.dataset.now) || 0;
-  if (low >= high) return;
-  var midVal = (low + high) / 2;
-  var midPct = (mid - low) / (high - low) * 100;
-  var midValPct = (midVal - low) / (high - low) * 100;
-  var nowPct = (now - low) / (high - low) * 100;
-  track.style.setProperty("--mid-pct", midPct.toFixed(2) + "%");
-  track.style.setProperty("--midval-pct", midValPct.toFixed(2) + "%");
-  track.style.setProperty("--now-pct", nowPct.toFixed(2) + "%");
-  var midLine = track.querySelector(".range-mid-line");
-  var midvalLine = track.querySelector(".range-midval-line");
-  if (midLine) midLine.style.left = midPct + "%";
-  if (midvalLine) midvalLine.style.left = midValPct + "%";
-  var fcode = track.dataset.code;
-  var f = null;
-  if (fcode && typeof state !== "undefined") {
-    f = state.find(function(x) { return x.code === fcode; });
-  }
-  var rate = 0;
-  if (f) {
-    var invested = (f.initShares || 0) * (f.basePrice || 0) + (f.buys || []).reduce(function(s, b) { return s + (b.amount || 0); }, 0);
-    var shares = (f.initShares || 0) + (f.buys || []).reduce(function(s, b) {
-      if (!b.date) return s;
-      try {
-        var navHistory = JSON.parse(localStorage.getItem("nav_history") || "[]");
-        var matched = navHistory.find(function(r) { return r.code === f.code && r.date === b.date; });
-        var pnav = matched ? matched.nav : (f.price || 0);
-        return pnav > 0 ? s + (b.amount / pnav) : s;
-      } catch(e) { return s; }
-    }, 0);
-    if (invested > 0) rate = (now * shares - invested) / invested * 100;
-  }
-  var ratePct = Math.max(0, Math.min(100, Math.abs(rate)));
-  track.style.setProperty("--rate-pct", ratePct.toFixed(2) + "%");
-  var runner = track.querySelector(".runner");
-  if (runner) {
-    if (rate < 0) runner.classList.add("negative");
-    else runner.classList.remove("negative");
-    runner.classList.remove("running-fast", "running-slow", "walking-back", "running-flee");
-    var emoji = runner.querySelector(".runner-emoji");
-    var dust = runner.querySelector(".runner-dust");
-    // F 方案: 股票情绪 7 档
-    if (rate >= 20) {
-      runner.classList.add("running-fast");
-      if (emoji) emoji.textContent = "🤑";
-      if (dust) dust.textContent = "💎";
-    } else if (rate >= 10) {
-      runner.classList.add("running-fast");
-      if (emoji) emoji.textContent = "🥳";
-      if (dust) dust.textContent = "✨";
-    } else if (rate >= 5) {
-      runner.classList.add("running-slow");
-      if (emoji) emoji.textContent = "😎";
-      if (dust) dust.textContent = "💪";
-    } else if (rate >= 0) {
-      runner.classList.add("running-slow");
-      if (emoji) emoji.textContent = "😐";
-      if (dust) dust.textContent = "";
-    } else if (rate >= -5) {
-      runner.classList.add("walking-back");
-      if (emoji) emoji.textContent = "😟";
-      if (dust) dust.textContent = "";
-    } else if (rate >= -10) {
-      runner.classList.add("walking-back");
-      if (emoji) emoji.textContent = "😱";
-      if (dust) dust.textContent = "💧";
-    } else {
-      runner.classList.add("running-flee");
-      if (emoji) emoji.textContent = "💀";
-      if (dust) dust.textContent = "☠️";
-    }
-    track.querySelectorAll(".range-tree").forEach(function(tree) {
-      var leftPct = parseFloat(tree.style.left) || 0;
-      if (Math.abs(rate) >= leftPct) tree.classList.add("reached");
-      else tree.classList.remove("reached");
-    });
-  }
-}
-
 // ==================== 第 2 部分：核心渲染函数 ====================
 
-// ============== 滚轮选择器 (3列联动, 仿 iOS) ==============
+// ============== 滚轮选择器 ==============
 var WHEEL_ITEM_H = 44;
 var wheelState = { target: null, cols: [] };
 
@@ -611,7 +519,6 @@ function openWheel(input) {
   if (init < 0) init = 0;
   var cols;
   if (kind === 'price') {
-    // 5 列: 元 / 十分 / 百分 / 千分 / 万分 (0.0000 - 5.9999)
     cols = [
       { label: '元', base: 1,     max: 5 },
       { label: '.',  base: 0.1,   max: 9 },
@@ -627,7 +534,6 @@ function openWheel(input) {
     cols[3].curVal = Math.floor(fracPart / 10) % 10;
     cols[4].curVal = fracPart % 10;
   } else {
-    // int: 5 列 万/千/百/十/个 (0 - 99999)
     cols = [
       { label: '万', base: 10000, max: 9 },
       { label: '千', base: 1000,  max: 9 },
@@ -642,7 +548,6 @@ function openWheel(input) {
     cols[3].curVal = Math.floor(iv / 10) % 10;
     cols[4].curVal = iv % 10;
   }
-  // 找标题: 优先用 input 前面 .lbl 的文字
   var title = '选择数值';
   var prev = input.previousElementSibling;
   if (prev && prev.classList && prev.classList.contains('lbl')) {
@@ -724,11 +629,9 @@ function bindWheelCol(cObj) {
     var off = startOff + dy;
     var minOff = -(cObj.max * WHEEL_ITEM_H);
     var maxOff = 0;
-    // 边界弹性
     if (off > maxOff + 50) off = maxOff + 50 + (off - maxOff - 50) * 0.3;
     if (off < minOff - 50) off = minOff - 50 + (off - minOff + 50) * 0.3;
     track.style.transform = 'translateY(' + off + 'px)';
-    // 速度
     var now = Date.now();
     var dt = now - lastT;
     if (dt > 0) vel = (y - lastY) / dt;
@@ -747,7 +650,6 @@ function bindWheelCol(cObj) {
   c.addEventListener('touchmove', function(e) { var t = e.touches[0]; move(t.clientY); e.preventDefault(); }, { passive: false });
   c.addEventListener('touchend', end);
   c.addEventListener('touchcancel', end);
-  // 鼠标拖拽(桌面端调试)
   var md = false;
   c.addEventListener('mousedown', function(e) { md = true; start(e.clientY); e.preventDefault(); });
   window.addEventListener('mousemove', function(e) { if (md) move(e.clientY); });
@@ -768,11 +670,9 @@ function closeWheel(ok) {
   var inp = wheelState.target;
   var kind = inp.dataset.wheelKind || 'price';
   inp.value = (kind === 'price') ? v.toFixed(4) : String(Math.round(v));
-  // 触发原 input 的 input 事件, 让 save/updateCardValues 链生效
   inp.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-// 滚轮全局事件 (DOMContentLoaded 后绑定一次)
 function bindWheelGlobalEvents() {
   if (window._wheelBound) return;
   window._wheelBound = true;
@@ -798,8 +698,6 @@ if (document.readyState === 'loading') {
 }
 
 function bindFundEvents(f, i) {
-  // 数字输入改用滚轮选择器 (全局委托 .click-wheel), 这里不再单独绑 click
-  // 保留 input 事件以兼容程序触发 (滚轮写回后会 dispatch('input'))
   var priceIn = document.getElementById(`price-${i}`);
   if (priceIn) {
     priceIn.addEventListener('input', e => {
@@ -835,6 +733,10 @@ function bindFundEvents(f, i) {
   });
   document.getElementById(`addBuy-${i}`)?.addEventListener('click', () => {
     addBuyDialog(i);
+  });
+  // 新增卖出按钮事件
+  document.getElementById(`addSell-${i}`)?.addEventListener('click', () => {
+    addSellDialog(i);
   });
   document.getElementById(`undo-${i}`)?.addEventListener('click', () => {
     undo();
@@ -877,6 +779,23 @@ function bindFundEvents(f, i) {
     var dateInp = document.getElementById(`bdate-${i}-${bi}`);
     var priceInp = document.getElementById(`bprice-${i}-${bi}`);
     var amtInp = document.getElementById(`bamt-${i}-${bi}`);
+    // 份额输入（卖出模式）
+    var sharesInput = document.getElementById(`bshares-input-${i}-${bi}`);
+    if (sharesInput) {
+      sharesInput.addEventListener('input', function(e) {
+        var sharesVal = parseFloat(e.target.value) || 0;
+        var nav = b.price || f.price || 0;
+        if (nav > 0) {
+          var amount = sharesVal * nav;
+          b.amount = -amount;
+          var row = e.target.closest('.buy-row');
+          var display = row ? row.querySelector('.bamount-calc') : null;
+          if (display) display.textContent = Math.round(amount).toLocaleString();
+          save(JSON.stringify(state));
+          updateCardValues(i);
+        }
+      });
+    }
     var refreshShares = () => {
       var absAmt = Math.abs(b.amount || 0);
       var navHistory = (() => { try { return JSON.parse(localStorage.getItem('nav_history') || '[]'); } catch(e) { return []; }})();
@@ -1217,7 +1136,6 @@ function bindSummaryEvents() {}
 function renderSummary() {
   var html = '<div class="fund" style="border-top: 4px solid #FFD700">';
   html += '<div class="summary-title">📊 投资汇总</div>';
-  // 预读净值历史, 统一用 nav_history 里的真实净值算每笔份额
   var navHistory = (() => { try { return JSON.parse(localStorage.getItem('nav_history') || '[]'); } catch(e) { return []; }})();
   var totalInv=0, totalVal=0, totalTgt=0, totalShares=0;
   var stats = state.map(f => {
@@ -1226,7 +1144,6 @@ function renderSummary() {
     var curPrice = f.price || 0;
     var target = f.target || 0;
     var inv = (initShares * basePrice) + f.buys.reduce((s,b)=>s+(b.amount||0),0);
-    // 份额: 与卡片一致, 用 b.date 对应的净值; 没有 b.date 时退到 f.price
     var sh_buys = f.buys.reduce((s, b) => {
       if (!b.date) return s;
       var matched = navHistory.find(r => r.code === f.code && r.date === b.date);
@@ -1237,10 +1154,8 @@ function renderSummary() {
     var mv = curPrice * sh;
     var pnl = mv-inv;
     var rate = inv>0 ? (pnl/inv*100) : 0;
-    // 回撤: 现价相对高点的跌幅, <= 0
     var pHigh = parseFloat(f.priceHigh) || 0;
     var drawdown = (pHigh > 0 && curPrice > 0) ? ((curPrice - pHigh) / pHigh * 100) : 0;
-    // 兼容旧字段 dropPct (用回撤)
     var dropPct = drawdown;
     var prog = f.target>0 ? (inv/f.target*100) : 0;
     totalInv += inv; totalVal += mv; totalTgt += f.target; totalShares += sh;
@@ -1262,7 +1177,6 @@ function renderSummary() {
   html += '<div class="sum-table-wrap"><table class="buy-table"><thead><tr><th>品种</th><th>现价</th><th>回撤</th><th>金额</th><th>份额</th><th>收益</th><th>收益率</th><th>投入</th><th>完成度</th></tr></thead><tbody>';
   stats.forEach(s => {
     var pc = s.pnl >= 0 ? '#dc2626' : '#16a34a';
-    // 回撤颜色: 0 = 灰(没跌), 跌得越深越绿
     var dc = s.drawdown < -10 ? '#16a34a' : (s.drawdown < 0 ? '#4ade80' : '#93A3BD');
     var dropStr = s.drawdown.toFixed(1) + '%';
     html += '<tr>';
@@ -1367,39 +1281,33 @@ function updateCardValues(i) {
   var card = document.querySelectorAll('.fund')[i];
   if (!card) return;
   var { tier, currentAmt, currentTrigger, currentTier, currentIsBuy, neighbors } = calcCurrent(f);
-  // 回撤: 现价相对高点
   var pHighU = parseFloat(f.priceHigh) || 0;
   var curU = parseFloat(f.price) || 0;
   var dropPct = (pHighU > 0 && curU > 0) ? ((curU - pHighU) / pHighU * 100) : (((f.price - f.basePrice) / f.basePrice * 100) || 0);
   var dropColor = dropPct < -10 ? '#16a34a' : (dropPct < 0 ? '#4ade80' : '#93A3BD');
-  var inv_base = 0;  // 合计只算 buys, 不算 initShares
+  var inv_base = 0;
   var inv_buys = f.buys.reduce((s, b) => s + (b.amount || 0), 0);
   var invested = inv_base + inv_buys;
-  var sh_base = 0;  // 合计只算 buys, 不算 initShares
-  // 注意：此处份额计算去掉 Math.abs，使卖出为负
+  var sh_base = 0;
   var sh_buys = f.buys.reduce((s, b) => {
     if (!b.date) return s;
     var navHistory = (() => { try { return JSON.parse(localStorage.getItem('nav_history') || '[]'); } catch(e) { return []; }})();
     var matched = navHistory.find(r => r.code === f.code && r.date === b.date);
     var price = matched ? matched.nav : (b.price || f.price || 0);
-    return price > 0 ? s + (b.amount / price) : s;   // 移除 Math.abs
+    return price > 0 ? s + (b.amount / price) : s;
   }, 0);
   var shares = sh_base + sh_buys;
-  // 收益: 金额 × 涨幅 = amount × (Sday 净值 - Bday 净值) / Bday 净值
-  // 只算 Sday 非空 + Sday 有数据
   var navHistory = (() => { try { return JSON.parse(localStorage.getItem("nav_history") || "[]"); } catch(e) { return []; }})();
   var totalPnl = (f.buys || []).reduce(function(s, b) {
     if (!b.sday || b.sday === "") return s;
     var sdayRecord = navHistory.find(function(r) { return r.code === f.code && r.date === b.sday; });
     if (!sdayRecord || sdayRecord.nav == null) return s;
-    // Bday 净值: 优先 b.price, 否则查 nav_history
     var buyNav = b.price;
     if (buyNav == null || buyNav <= 0) {
       var bdayRecord = navHistory.find(function(r) { return r.code === f.code && r.date === b.date; });
       buyNav = bdayRecord ? bdayRecord.nav : 0;
     }
     if (buyNav <= 0) return s;
-    // 金额 × 涨幅 (涨幅 = (Sday - Bday) / Bday)
     return s + (b.amount || 0) * (sdayRecord.nav - buyNav) / buyNav;
   }, 0);
   var curPrice = f.price || 0;
@@ -1446,12 +1354,12 @@ function updateCardValues(i) {
     var cells = foot.querySelectorAll('div');
     if (cells[2]) {
       var b = cells[2].querySelector('b');
-      if (b) b.textContent = Math.round(inv_buys).toLocaleString();   // 改为 inv_buys
+      if (b) b.textContent = Math.round(inv_buys).toLocaleString();
       else cells[2].textContent = Math.round(inv_buys).toLocaleString();
     }
     if (cells[3]) {
       var b = cells[3].querySelector('b');
-      if (b) b.textContent = Math.round(sh_buys).toLocaleString();   // 改为 sh_buys
+      if (b) b.textContent = Math.round(sh_buys).toLocaleString();
       else cells[3].textContent = Math.round(sh_buys).toLocaleString();
     }
   }
@@ -1483,12 +1391,11 @@ function renderFund(f, i) {
     });
   }
   var { tier, currentAmt, currentTrigger, currentTier, currentIsBuy, neighbors } = calcCurrent(f);
-  // 回撤: 现价相对高点; 没有高点就退到相对基准
   var pHigh = parseFloat(f.priceHigh) || 0;
   var curPrice0 = parseFloat(f.price) || 0;
   var dropPct;
   if (pHigh > 0 && curPrice0 > 0) {
-    dropPct = (curPrice0 - pHigh) / pHigh * 100;  // 永远 <= 0
+    dropPct = (curPrice0 - pHigh) / pHigh * 100;
   } else {
     dropPct = ((f.price - f.basePrice) / f.basePrice * 100) || 0;
   }
@@ -1502,10 +1409,9 @@ function renderFund(f, i) {
     var navHistory = (() => { try { return JSON.parse(localStorage.getItem('nav_history') || '[]'); } catch(e) { return []; }})();
     var matched = navHistory.find(r => r.code === f.code && r.date === b.date);
     var price = matched ? matched.nav : (f.price || 0);
-    return price > 0 ? s + (b.amount / price) : s;   // 去掉 Math.abs
+    return price > 0 ? s + (b.amount / price) : s;
   }, 0);
   var shares = sh_base + sh_buys;
-  // 收益: 金额 × 涨幅 (与单行一致) 只算 Sday 非空 + Sday 有数据
   var navHistory = (() => { try { return JSON.parse(localStorage.getItem("nav_history") || "[]"); } catch(e) { return []; }})();
   var totalPnl = (f.buys || []).reduce(function(s, b) {
     if (!b.sday || b.sday === "") return s;
@@ -1556,54 +1462,46 @@ function renderFund(f, i) {
         })()}
       </div>
       ${(() => {
-        // ===== 区间条: 现价在 low-mid-high 区间中的位置可视化 =====
         var pLow = parseFloat(f.priceLow) || 0;
         var pMid = parseFloat(f.priceMid) || 0;
-        var pHigh = parseFloat(f.priceHigh) || 0;
+        var pHigh2 = parseFloat(f.priceHigh) || 0;
         var pNow = parseFloat(f.price) || 0;
-        if (pLow > 0 && pHigh > pLow && pMid > 0 && pMid < pHigh) {
-          // 总格数: 用 tiers * 2, 让中点正好落在中间
+        if (pLow > 0 && pHigh2 > pLow && pMid > 0 && pMid < pHigh2) {
           var total = Math.max(20, (f.tiers || 10) * 2);
-          var lowFrac = (pLow - pLow) / (pHigh - pLow);
-          var midFrac = (pMid - pLow) / (pHigh - pLow);
-          var nowFrac = (pNow - pLow) / (pHigh - pLow);
+          var lowFrac = (pLow - pLow) / (pHigh2 - pLow);
+          var midFrac = (pMid - pLow) / (pHigh2 - pLow);
+          var nowFrac = (pNow - pLow) / (pHigh2 - pLow);
           lowFrac = Math.max(0, Math.min(1, lowFrac));
           midFrac = Math.max(0, Math.min(1, midFrac));
           nowFrac = Math.max(0, Math.min(1, nowFrac));
-          // 现价格位
           var nowCell = Math.round(nowFrac * (total - 1));
           var midCell = Math.round(midFrac * (total - 1));
-          // 拼字符: 末位 ☀, 现价格用 ●, 中点格(在另一边)用半心♥(颜色区分)
           var chars = [];
           for (var k = 0; k < total; k++) {
-            if (k === total - 1) chars.push('☀'); // 终点
-            else if (k === nowCell && k === midCell) chars.push('●'); // 正好在中点
-            else if (k === nowCell) chars.push('●'); // 现价格
+            if (k === total - 1) chars.push('☀');
+            else if (k === nowCell && k === midCell) chars.push('●');
+            else if (k === nowCell) chars.push('●');
             else {
-              // 现价以下 = 实心 ♥, 现价以上 = 空心 ♡
               if (k < nowCell) chars.push('♥');
               else chars.push('♡');
             }
           }
           var bar = chars.join('');
-          // 现价相对位置% (标签)
           var nowPct = (nowFrac * 100).toFixed(1);
-          // 现价颜色: <中点 绿(低吸区), >=中点 橙(追高区)
           var nowColor = pNow <= pMid ? 'var(--neon-green)' : 'var(--neon-orange)';
           var distLow = ((pNow - pLow) / pLow * 100).toFixed(1);
           var distMid = ((pNow - pMid) / pMid * 100).toFixed(1);
-          var distHigh = ((pNow - pHigh) / pHigh * 100).toFixed(1);
-          // ===== 新版: 跑道 + 跑步小人 + 树 + 星星 + 飞云 =====
+          var distHigh = ((pNow - pHigh2) / pHigh2 * 100).toFixed(1);
         return `
             <div class="range-bar-section">
               <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
                 <span>🏃 收益率跑道</span>
                 <span style="font-size:10px;color:var(--text-dim);font-weight:500;letter-spacing:0.5px">
-                  低 ${pLow.toFixed(4)} · 中 ${pMid.toFixed(4)} · 高 ${pHigh.toFixed(4)}
+                  低 ${pLow.toFixed(4)} · 中 ${pMid.toFixed(4)} · 高 ${pHigh2.toFixed(4)}
                 </span>
               </div>
               <div class="range-track"
-                   data-low="${pLow}" data-mid="${pMid}" data-high="${pHigh}" data-now="${pNow}"
+                   data-low="${pLow}" data-mid="${pMid}" data-high="${pHigh2}" data-now="${pNow}"
                    data-init-shares="${f.initShares}" data-base-price="${f.basePrice}" data-code="${f.code}">
                 <div class="range-clouds">
                   <span class="cloud cloud-1">☁️</span>
@@ -1682,71 +1580,85 @@ function renderFund(f, i) {
         <div class="section-title">
           交易记录
           <div class="buy-btns">
+            <button class="add-btn" id="addSell-${i}" title="添加卖出">-</button>
             <button class="add-btn" id="undo-${i}" title="撤销">‹‹</button>
             <button class="add-btn" id="redo-${i}" title="重做">››</button>
             <button class="add-btn" id="ocr-${i}" title="识图录入">📷</button>
-            <button class="add-btn" id="addBuy-${i}" title="添加一行">+</button>
+            <button class="add-btn" id="addBuy-${i}" title="添加买入">+</button>
           </div>
         </div>
         <div class="buy-table-wrap">
-          <div class="buy-grid-head"><div>Bday</div><div>净值</div><div>金额</div><div>份额</div><div>涨幅</div><div>Sday</div></div>
+          <div class="buy-grid-head"><div>Bday</div><div>净值</div><div>金额/份额</div><div>份额/金额</div><div>涨幅</div><div>Sday</div></div>
           <div class="buy-grid-body">
-              ${f.buys.map((b, bi) => {
-                var realAmt = b.amount || 0;
-                var amtCls = realAmt > 0 ? 'amt-pos' : (realAmt < 0 ? 'amt-neg' : 'amt-neu');
-                var displayAmt = realAmt;
-                var navHistory = (() => {
-                  try { return JSON.parse(localStorage.getItem('nav_history') || '[]'); }
-                  catch(e) { return []; }
-                })();
-                var sday = b.sday || '';
-                var sdayNav = sday ? (navHistory.find(r => r.code === f.code && r.date === sday) || {}).nav : null;
-                var bNavMatch = b.date ? (navHistory.find(r => r.code === f.code && r.date === b.date) || {}).nav : null;
-                var shares = (realAmt && bNavMatch) ? (Math.abs(realAmt) / bNavMatch) : 0;
-                var priceNow = f.price || 0;
-                var priceBuy = bNavMatch != null ? bNavMatch : 0;
-                var hasSdayMatch = !!(sday && sdayNav != null);
-                var refPrice = hasSdayMatch ? sdayNav : priceNow;
-                var changePct = null;
-                var changeColor = '#93A3BD';
-                if (priceBuy > 0 && refPrice > 0) {
-                  changePct = ((refPrice - priceBuy) / priceBuy) * 100;
-                  changeColor = changePct > 0 ? '#dc2626' : (changePct < 0 ? '#16a34a' : '#93A3BD');
-                }
-                var sdayMiss = !!(sday && sdayNav == null);
-                var dateShort = '';
-                if (b.date) {
-                  var parts = b.date.split('-');
-                  if (parts.length === 3) {
-                    var mm = parseInt(parts[1], 10);
-                    var dd = parseInt(parts[2], 10);
-                    dateShort = (mm < 10 ? '0' + mm : mm) + '/' + (dd < 10 ? '0' + dd : dd);
-                  } else {
-                    dateShort = b.date;
-                  }
-                }
-                var sdayShort = '';
-                if (sday) {
-                  var parts = sday.split('-');
-                  if (parts.length === 3) sdayShort = parts[1] + '/' + parts[2];
-                  else sdayShort = sday;
-                }
-                return `
+            ${f.buys.map((b, bi) => {
+              var realAmt = b.amount || 0;
+              var isSell = realAmt < 0;
+              var amtCls = isSell ? 'amt-neg' : (realAmt > 0 ? 'amt-pos' : 'amt-neu');
+              var navHistory = (() => {
+                try { return JSON.parse(localStorage.getItem('nav_history') || '[]'); }
+                catch(e) { return []; }
+              })();
+              var sday = b.sday || '';
+              var sdayNav = sday ? (navHistory.find(r => r.code === f.code && r.date === sday) || {}).nav : null;
+              var bNavMatch = b.date ? (navHistory.find(r => r.code === f.code && r.date === b.date) || {}).nav : null;
+              var nav = b.price || f.price || 0;
+              var sharesDisplay = (realAmt && nav) ? (Math.abs(realAmt) / nav) : 0;
+              var priceNow = f.price || 0;
+              var priceBuy = bNavMatch != null ? bNavMatch : 0;
+              var hasSdayMatch = !!(sday && sdayNav != null);
+              var refPrice = hasSdayMatch ? sdayNav : priceNow;
+              var changePct = null;
+              var changeColor = '#93A3BD';
+              if (priceBuy > 0 && refPrice > 0) {
+                changePct = ((refPrice - priceBuy) / priceBuy) * 100;
+                changeColor = changePct > 0 ? '#dc2626' : (changePct < 0 ? '#16a34a' : '#93A3BD');
+              }
+              var dateShort = b.date ? (() => {
+                var parts = b.date.split('-');
+                if (parts.length === 3) return parts[1] + '/' + parts[2];
+                return b.date;
+              })() : '';
+              var sdayShort = sday ? (() => {
+                var parts = sday.split('-');
+                if (parts.length === 3) return parts[1] + '/' + parts[2];
+                return sday;
+              })() : '';
+              return `
             <div class="buy-row" data-bi="${bi}" data-fund-i="${i}">
               <div class="buy-row-inner">
-                <div class="bc bc-pill bc-date ${b.date && !navHistory.find(r => r.code === f.code && r.date === b.date) ? 'sday-miss' : ''}"><input type="date" id="bdate-${i}-${bi}" value="${b.date||''}" data-short="${dateShort}" class="bcell bdate-slider"></div>
-                <div class="bc bc-pill bc-nav ${!bNavMatch ? 'sday-miss' : ''}" id="bnavwrap-${i}-${bi}">${bNavMatch != null ? '<span class="bnav-readonly" data-bi="'+bi+'" style="color:var(--neon-green);font-size:12px;font-weight:700;font-family:monospace">'+bNavMatch.toFixed(4)+'</span>' : '<span class="bnav-readonly" data-bi="'+bi+'" style="color:#6b7280;font-size:11px;font-weight:600">无匹配</span>'}</div>
-                <div class="bc bc-pill">
-                  <input type="number" step="1" id="bamt-${i}-${bi}" value="${displayAmt?Math.round(displayAmt):''}" class="bcell ${amtCls}" data-original-amount="${realAmt}" style="width:100%">
+                <div class="bc bc-pill bc-date ${b.date && !navHistory.find(r => r.code === f.code && r.date === b.date) ? 'sday-miss' : ''}">
+                  <input type="date" id="bdate-${i}-${bi}" value="${b.date||''}" data-short="${dateShort}" class="bcell bdate-slider">
                 </div>
-                <div class="bc bc-pill"><span class="bshares" data-bi="${bi}" style="color:#93A3BD;font-size:13px;font-weight:700">${shares ? shares.toFixed(2) : '-'}</span></div>
-                <div class="bc bc-pill"><span class="bchange" data-bi="${bi}" style="color:${changeColor};font-size:12px;font-weight:700">${changePct === null ? '-' : (changePct >= 0 ? '+' : '') + changePct.toFixed(2) + '%'}</span></div>
-                <div class="bc bc-pill bc-sday ${sday && sdayNav == null ? 'sday-miss' : ''}"><input type="date" id="bsday-${i}-${bi}" value="${sday}" max="${new Date().toISOString().split('T')[0]}" data-short="${sdayShort}" class="bcell bdate-slider" data-bi="${bi}" data-fund-i="${i}"></div>
+                <div class="bc bc-pill bc-nav ${!bNavMatch ? 'sday-miss' : ''}" id="bnavwrap-${i}-${bi}">
+                  ${bNavMatch != null ? '<span class="bnav-readonly" data-bi="'+bi+'" style="color:var(--neon-green);font-size:12px;font-weight:700;font-family:monospace">'+bNavMatch.toFixed(4)+'</span>' : '<span class="bnav-readonly" data-bi="'+bi+'" style="color:#6b7280;font-size:11px;font-weight:600">无匹配</span>'}
+                </div>
+                <div class="bc bc-pill">
+                  ${!isSell ? `
+                    <input type="number" step="1" id="bamt-${i}-${bi}" value="${realAmt ? Math.round(realAmt) : ''}" class="bcell amt-input ${amtCls}" data-bi="${bi}" placeholder="金额" style="width:100%">
+                  ` : `
+                    <input type="number" step="0.01" id="bshares-input-${i}-${bi}" value="${sharesDisplay ? sharesDisplay.toFixed(2) : ''}" class="bcell shares-input" data-bi="${bi}" placeholder="份额" style="width:100%;color:#fb923c;font-weight:700">
+                  `}
+                </div>
+                <div class="bc bc-pill">
+                  ${!isSell ? `
+                    <span class="bshares" data-bi="${bi}" style="color:#93A3BD;font-size:13px;font-weight:700">${sharesDisplay ? sharesDisplay.toFixed(2) : '-'}</span>
+                  ` : `
+                    <span class="bamount-calc" data-bi="${bi}" style="color:#16a34a;font-size:13px;font-weight:700">${realAmt ? Math.round(Math.abs(realAmt)).toLocaleString() : '-'}</span>
+                  `}
+                </div>
+                <div class="bc bc-pill">
+                  <span class="bchange" data-bi="${bi}" style="color:${changeColor};font-size:12px;font-weight:700">
+                    ${changePct === null ? '-' : (changePct >= 0 ? '+' : '') + changePct.toFixed(2) + '%'}
+                  </span>
+                </div>
+                <div class="bc bc-pill bc-sday ${sday && sdayNav == null ? 'sday-miss' : ''}">
+                  <input type="date" id="bsday-${i}-${bi}" value="${sday}" max="${new Date().toISOString().split('T')[0]}" data-short="${sdayShort}" class="bcell bdate-slider" data-bi="${bi}" data-fund-i="${i}">
+                </div>
               </div>
             </div>
-              `;}).join('')}
+              `;
+            }).join('')}
           </div>
-          <!-- 修改：合计金额和份额仅统计交易记录 (inv_buys, sh_buys) -->
           <div class="buy-grid-foot">
             <div class="bf-label"><b>合计</b></div>
             <div></div>
@@ -1826,6 +1738,7 @@ function updateTime() {
   var el = document.getElementById('time');
   if (el) el.textContent = '';
 }
+
 // ==================== 第 3 部分：事件监听、导出、主题、OCR、弹窗等 ====================
 
 window.addEventListener('focus', () => {
@@ -2413,7 +2326,7 @@ function smartBday(dateStr, timeStr) {
   }
 }
 
-// ============== OCR 识别交易记录（修复版） ==============
+// ============== OCR 识别交易记录 ==============
 var ocrWorker = null;
 async function loadTesseractLib() {
   if (window.Tesseract) return;
@@ -2800,6 +2713,30 @@ function addBuyDialog(i) {
     type: 'buy',
     price: f.price || f.basePrice || 0,
     amount: 0,
+    tier: 0
+  });
+  save(prev);
+  render();
+}
+
+// ====== 新增：添加卖出记录 ======
+function addSellDialog(i) {
+  var f = state[i];
+  var now = new Date();
+  var today = now.toISOString().split('T')[0];
+  var minutes = now.getHours() * 60 + now.getMinutes();
+  var bday;
+  if (minutes >= 570 && minutes <= 900) {
+    bday = isTradeDay(today) ? today : nextTradeDay(today);
+  } else {
+    bday = nextTradeDay(today);
+  }
+  var prev = JSON.stringify(state);
+  f.buys.push({
+    date: bday,
+    type: 'sell',
+    price: f.price || f.basePrice || 0,
+    amount: -1000,
     tier: 0
   });
   save(prev);
