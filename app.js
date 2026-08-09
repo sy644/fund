@@ -165,7 +165,6 @@ var main = document.getElementById('funds');
     .add-btn { width:36px; height:36px; border-radius:50%; background:rgba(0,240,255,0.08); color:#67e8f9; border:1.5px solid rgba(0,240,255,0.3); font-size:18px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; margin-right:6px; box-shadow:none; transition: all .2s ease; }
     .add-btn:hover { background:rgba(0,240,255,0.18); box-shadow:0 0 8px rgba(0,240,255,0.25); }
     .buy-row { position:relative; }
-    /* 新增交易行 - 数据标记颜色 (按 Bday/净值/金额/份额 4 个 cell 染色) */
     .bc[data-mark="red"] { color:#fb7185; }
     .bc[data-mark="red"] .bcell,
     .bc[data-mark="red"] .bnav-readonly,
@@ -287,9 +286,8 @@ function getSavedActiveTab() { try { var s = localStorage.getItem('activeTab'); 
 function saveActiveTab(t) { try { localStorage.setItem('activeTab', String(t)); } catch(e){} }
 var activeTab = getSavedActiveTab();
 
-// ==================== 主渲染函数（已修复长按干扰点击） ====================
+// ==================== 主渲染函数 ====================
 function render() {
-  // 顶部 tab-bar 删了, 切到下边
   var html = '<div class="tab-content">';
   if (activeTab < 0 || activeTab > state.length) {
     activeTab = state.length > 0 ? state.length : 0;
@@ -305,21 +303,19 @@ function render() {
   if (activeTab < state.length) html += renderFund(state[activeTab], activeTab);
   else html += renderSummary();
   html += '</div>';
-  // 底部 dock: 保存 / 导表 / | / 汇总 / 港股 / 证券 / +
+  // 底部 dock: 保存 / 导出菜单 / 导入 / | / 汇总 / 基金名 / +
   html += '<div class="dock-bar">';
-  // 工具按钮: 保存(刷新) + 导表 (用 .tab 样式, 不占位)
   html += '<button class="dock-icon-only" id="refreshBtn" title="保存+刷新">✍</button>';
-  html += '<button class="dock-icon-only" id="tabSaveBtn" title="导出收益表">📊</button>';
-  // 分隔
+  html += '<button class="dock-icon-only" id="exportMenuBtn" title="导出数据">📤</button>';
+  html += '<button class="dock-icon-only" id="importDataBtn" title="导入数据">📂</button>';
   html += '<span class="dock-sep"></span>';
-  // 切换: 沿用原 .tab 样式
   html += '<button class="tab tab-summary ' + (activeTab===state.length?'active':'') + '" data-tab="' + state.length + '">汇总</button>';
   state.forEach((f, i) => {
     html += `<button class="tab ${i===activeTab?'active':''}" data-tab="${i}">${f.name}</button>`;
   });
   html += '<button class="tab-add" data-add="1" title="新增基金">+</button>';
   html += '</div>';
-  // 滚轮选择器容器 (3列联动, 数字输入统一用这个)
+  // 滚轮选择器容器
   html += '<div class="wheel-mask" id="wheelMask">';
   html += '  <div class="wheel-sheet">';
   html += '    <div class="wheel-header">';
@@ -335,7 +331,7 @@ function render() {
   html += '</div>';
   main.innerHTML = html;
 
-  // 单击切换（防误触）
+  // 单击切换
   document.querySelectorAll('.tab').forEach(btn => {
     btn.addEventListener('click', (e) => {
       if (btn.dataset._pressing) return;
@@ -346,8 +342,28 @@ function render() {
   });
 
   document.querySelector('.tab-add[data-add="1"]')?.addEventListener('click', addNewFund);
-  document.getElementById('tabSaveBtn')?.addEventListener('click', saveData);
   document.getElementById('refreshBtn')?.addEventListener('click', () => { location.href = 'nav.html'; });
+  // 导出菜单按钮
+  document.getElementById('exportMenuBtn')?.addEventListener('click', showExportMenu);
+  // 导入按钮
+  document.getElementById('importDataBtn')?.addEventListener('click', function() {
+    var input = document.getElementById('importFileInput');
+    if (!input) {
+      input = document.createElement('input');
+      input.type = 'file';
+      input.id = 'importFileInput';
+      input.accept = '.json,application/json';
+      input.style.cssText = 'position:fixed;top:-1000px;left:-1000px;opacity:0';
+      document.body.appendChild(input);
+    }
+    input.value = '';
+    input.onchange = function(e) {
+      var file = e.target.files[0];
+      if (!file) return;
+      importData(file);
+    };
+    input.click();
+  });
 
   document.querySelectorAll('.sname-input').forEach(inp => {
     inp.addEventListener('blur', () => {
@@ -374,7 +390,7 @@ function render() {
     if (h) h.classList.remove('show');
   }
 
-  // 长按删除（已修复，不阻止点击）
+  // 长按删除
   document.querySelectorAll('.tab:not(.tab-summary):not(.tab-add):not(.tab-save-btn)').forEach(btn => {
     btn.addEventListener('touchstart', function(e) {
       if (this.dataset._pressing) return;
@@ -427,7 +443,8 @@ function render() {
   updateTime();
   document.querySelectorAll(".range-track").forEach(updateRangeTrack);
 }
-// ==================== 跑道 + 跑步小人 (F 方案 7 档) ====================
+
+// ==================== 跑道 + 跑步小人 ====================
 function updateRangeTrack(track) {
   var low = parseFloat(track.dataset.low) || 0;
   var mid = parseFloat(track.dataset.mid) || 0;
@@ -473,7 +490,6 @@ function updateRangeTrack(track) {
     runner.classList.remove("running-fast", "running-slow", "walking-back", "running-flee");
     var emoji = runner.querySelector(".runner-emoji");
     var dust = runner.querySelector(".runner-dust");
-    // F 方案: 股票情绪 7 档
     if (rate >= 20) {
       runner.classList.add("running-fast");
       if (emoji) emoji.textContent = "🤑";
@@ -513,7 +529,7 @@ function updateRangeTrack(track) {
 
 // ==================== 第 2 部分：核心渲染函数 ====================
 
-// ============== 滚轮选择器 (3列联动, 仿 iOS) ==============
+// ============== 滚轮选择器 ==============
 var WHEEL_ITEM_H = 44;
 var wheelState = { target: null, cols: [] };
 
@@ -525,7 +541,6 @@ function openWheel(input) {
   if (init < 0) init = 0;
   var cols;
   if (kind === 'price') {
-    // 5 列: 元 / 十分 / 百分 / 千分 / 万分 (0.0000 - 5.9999)
     cols = [
       { label: '元', base: 1,     max: 5 },
       { label: '.',  base: 0.1,   max: 9 },
@@ -541,7 +556,6 @@ function openWheel(input) {
     cols[3].curVal = Math.floor(fracPart / 10) % 10;
     cols[4].curVal = fracPart % 10;
   } else {
-    // int: 5 列 万/千/百/十/个 (0 - 99999)
     cols = [
       { label: '万', base: 10000, max: 9 },
       { label: '千', base: 1000,  max: 9 },
@@ -556,7 +570,6 @@ function openWheel(input) {
     cols[3].curVal = Math.floor(iv / 10) % 10;
     cols[4].curVal = iv % 10;
   }
-  // 找标题: 优先用 input 前面 .lbl 的文字
   var title = '选择数值';
   var prev = input.previousElementSibling;
   if (prev && prev.classList && prev.classList.contains('lbl')) {
@@ -638,11 +651,9 @@ function bindWheelCol(cObj) {
     var off = startOff + dy;
     var minOff = -(cObj.max * WHEEL_ITEM_H);
     var maxOff = 0;
-    // 边界弹性
     if (off > maxOff + 50) off = maxOff + 50 + (off - maxOff - 50) * 0.3;
     if (off < minOff - 50) off = minOff - 50 + (off - minOff + 50) * 0.3;
     track.style.transform = 'translateY(' + off + 'px)';
-    // 速度
     var now = Date.now();
     var dt = now - lastT;
     if (dt > 0) vel = (y - lastY) / dt;
@@ -661,7 +672,6 @@ function bindWheelCol(cObj) {
   c.addEventListener('touchmove', function(e) { var t = e.touches[0]; move(t.clientY); e.preventDefault(); }, { passive: false });
   c.addEventListener('touchend', end);
   c.addEventListener('touchcancel', end);
-  // 鼠标拖拽(桌面端调试)
   var md = false;
   c.addEventListener('mousedown', function(e) { md = true; start(e.clientY); e.preventDefault(); });
   window.addEventListener('mousemove', function(e) { if (md) move(e.clientY); });
@@ -682,11 +692,9 @@ function closeWheel(ok) {
   var inp = wheelState.target;
   var kind = inp.dataset.wheelKind || 'price';
   inp.value = (kind === 'price') ? v.toFixed(4) : String(Math.round(v));
-  // 触发原 input 的 input 事件, 让 save/updateCardValues 链生效
   inp.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-// 滚轮全局事件 (DOMContentLoaded 后绑定一次)
 function bindWheelGlobalEvents() {
   if (window._wheelBound) return;
   window._wheelBound = true;
@@ -761,9 +769,10 @@ function parseBuyRecords(text) {
   return rows;
 }
 
+// =====================================================================
+//  修改点 2：交易行绑定 – 买入金额可编辑，卖出份额可编辑
+// =====================================================================
 function bindFundEvents(f, i) {
-  // 数字输入改用滚轮选择器 (全局委托 .click-wheel), 这里不再单独绑 click
-  // 保留 input 事件以兼容程序触发 (滚轮写回后会 dispatch('input'))
   var priceIn = document.getElementById(`price-${i}`);
   if (priceIn) {
     priceIn.addEventListener('input', e => {
@@ -840,23 +849,19 @@ function bindFundEvents(f, i) {
       });
     });
   }
-  // =====================================================================
-  //  修改点 2：交易行绑定 – 买入金额可编辑，卖出份额可编辑
-  // =====================================================================
+
   f.buys.forEach((b, bi) => {
     var dateInp = document.getElementById(`bdate-${i}-${bi}`);
     var priceInp = document.getElementById(`bprice-${i}-${bi}`);
     var amtInp = document.getElementById(`bamt-${i}-${bi}`);
     var shareInp = document.getElementById(`bshare-${i}-${bi}`);  // 卖出专用
 
-    // 更新份额显示（用于买入时自动计算）
     var refreshShares = () => {
       if (b._shares != null) {
         var span = document.querySelector(`[data-bi="${bi}"].bshares`);
         if (span) span.textContent = Math.abs(b._shares).toFixed(2);
         return;
       }
-      // 若没有 _shares，尝试从金额和净值计算
       var absAmt = Math.abs(b.amount || 0);
       var navHistory = (() => { try { return JSON.parse(localStorage.getItem('nav_history') || '[]'); } catch(e) { return []; }})();
       var matched = b.date ? (navHistory.find(r => r.code === f.code && r.date === b.date) || {}).nav : null;
@@ -865,7 +870,7 @@ function bindFundEvents(f, i) {
       if (span) span.textContent = sh ? sh.toFixed(2) : '-';
     };
 
-    // 日期相关逻辑（原有，保留不变）
+    // 日期相关逻辑
     if (dateInp) {
       dateInp.parentElement.style.position = 'relative';
       var updateDateOverlay = () => {
@@ -955,7 +960,6 @@ function bindFundEvents(f, i) {
         save(p);
         updateDateOverlay();
         updateDateMissStyle();
-        // 若日期变更，触发重新计算
         if (b.type === 'buy' && amtInp) {
           amtInp.dispatchEvent(new Event('input'));
         } else if (b.type === 'sell' && shareInp) {
@@ -988,7 +992,7 @@ function bindFundEvents(f, i) {
 
     if (priceInp) priceInp.addEventListener('input', e => { const p=JSON.stringify(state); b.price = parseFloat(e.target.value) || 0; save(p); refreshShares(); updateCardValues(i); });
 
-    // Sday 相关（原有）
+    // Sday 相关
     var sdayInp = document.getElementById(`bsday-${i}-${bi}`);
     if (sdayInp) {
       sdayInp.style.color = 'transparent';
@@ -1050,7 +1054,6 @@ function bindFundEvents(f, i) {
         save(p);
         updateSdayOverlay();
         calcRowStyle();
-        // 若 Sday 变更，更新涨幅显示
         var chgSpan = document.querySelector(`[data-bi="${bi}"].bchange`);
         if (chgSpan) {
           var navHistory2 = (() => { try { return JSON.parse(localStorage.getItem('nav_history') || '[]'); } catch(e) { return []; }})();
@@ -1070,69 +1073,56 @@ function bindFundEvents(f, i) {
       calcRowStyle();
     }
 
-    // ============================================================
     // 买入金额 input（可编辑）→ 自动计算份额
-    // ============================================================
     if (amtInp) {
       amtInp.addEventListener('input', function(e) {
         var v = parseFloat(e.target.value) || 0;
-        if (v < 0) { // 若用户输入负数则视为错误，转为正数？
-          v = Math.abs(v);
-          e.target.value = v;
-        }
+        if (v < 0) { v = Math.abs(v); e.target.value = v; }
         if (v === 0) return;
         var prev = JSON.stringify(state);
         b.amount = v;
         b.type = 'buy';
-        // 获取该日净值
         var navHistory = (() => { try { return JSON.parse(localStorage.getItem('nav_history') || '[]'); } catch(e) { return []; }})();
         var matched = b.date ? navHistory.find(r => r.code === f.code && r.date === b.date) : null;
         var nav = matched ? matched.nav : 0;
         if (nav > 0) {
           b._shares = v / nav;
         } else {
-          b._shares = 0; // 无净值时份额为0，显示 '-'
+          b._shares = 0;
         }
         save(prev);
         updateCardValues(i);
-        // 更新份额显示
         var sharesSpan = document.querySelector(`[data-bi="${bi}"].bshares`);
         if (sharesSpan) {
           sharesSpan.textContent = (b._shares && b._shares > 0) ? b._shares.toFixed(2) : '-';
         }
-        // 金额颜色（正数红色）
         e.target.style.color = '#dc2626';
       });
     }
 
-    // ============================================================
     // 卖出份额 input（可编辑）→ 自动计算金额（负值）
-    // ============================================================
     if (shareInp) {
       shareInp.addEventListener('input', function(e) {
         var sh = parseFloat(e.target.value) || 0;
         if (sh < 0) { sh = Math.abs(sh); e.target.value = sh; }
         if (sh === 0) return;
         var prev = JSON.stringify(state);
-        b._shares = -sh; // 存储负份额
+        b._shares = -sh;
         b.type = 'sell';
-        // 获取净值
         var navHistory = (() => { try { return JSON.parse(localStorage.getItem('nav_history') || '[]'); } catch(e) { return []; }})();
         var matched = b.date ? navHistory.find(r => r.code === f.code && r.date === b.date) : null;
         var nav = matched ? matched.nav : 0;
         if (nav > 0) {
-          b.amount = -sh * nav; // 金额为负
+          b.amount = -sh * nav;
         } else {
-          b.amount = 0; // 无净值则金额为0，显示 '-'
+          b.amount = 0;
         }
         save(prev);
         updateCardValues(i);
-        // 更新金额显示（只读）
         var amtDisplay = e.target.closest('.buy-row').querySelector('.amt-readonly');
         if (amtDisplay) {
           amtDisplay.textContent = (b.amount && b.amount !== 0) ? Math.round(Math.abs(b.amount)).toLocaleString() : '-';
         }
-        // 份额颜色（负数绿色）
         e.target.style.color = '#22c55e';
       });
     }
@@ -1141,6 +1131,7 @@ function bindFundEvents(f, i) {
     if (delBtn) delBtn.addEventListener('click', () => { const p=JSON.stringify(state); f.buys.splice(bi, 1); save(p); render(); });
   });
 
+  // 长按删除
   (function setupLongPressDelete() {
     if (document.body.dataset.lpDeleteBound === '1') return;
     document.body.dataset.lpDeleteBound = '1';
@@ -1150,7 +1141,7 @@ function bindFundEvents(f, i) {
       if (!hintEl) {
         hintEl = document.createElement('div');
         hintEl.id = 'buyRowHint';
-        hintEl.style.cssText = 'position:fixed;left:50%;bottom:120px;transform:translateX(-50%);background:rgba(220,38,38,0.92);color:#fff;padding:8px 18px;border-radius:20px;font-size:13px;font-weight:700;z-index:99999;box-shadow:0 0 16px rgba(220,38,38,0.5);letter-spacing:0.5px;opacity:0;transition:opacity .2s ease;pointer-events:none';
+        hintEl.style.cssText = 'position:fixed;left:50%;bottom:120px;background:rgba(220,38,38,0.92);color:#fff;padding:8px 18px;border-radius:20px;font-size:13px;font-weight:700;z-index:99999;box-shadow:0 0 16px rgba(220,38,38,0.5);letter-spacing:0.5px;opacity:0;transition:opacity .2s ease;pointer-events:none';
         document.body.appendChild(hintEl);
       }
       hintEl.textContent = text;
@@ -1245,13 +1236,12 @@ function bindFundEvents(f, i) {
 }
 
 function bindSummaryEvents() {
-  // 汇总页目前没有需要额外绑定的事件, 保留空函数供 render() 调用
+  // 汇总页无额外事件
 }
 
 function renderSummary() {
   var html = '<div class="fund" style="border-top: 4px solid #FFD700">';
   html += '<div class="summary-title">📊 投资汇总</div>';
-  // 预读净值历史, 统一用 nav_history 里的真实净值算每笔份额
   var navHistory = (() => { try { return JSON.parse(localStorage.getItem('nav_history') || '[]'); } catch(e) { return []; }})();
   var totalInv=0, totalVal=0, totalTgt=0, totalShares=0;
   var stats = state.map(f => {
@@ -1260,7 +1250,6 @@ function renderSummary() {
     var curPrice = f.price || 0;
     var target = f.target || 0;
     var inv = (initShares * basePrice) + f.buys.reduce((s,b)=>s+(b.amount||0),0);
-    // 份额: 与卡片一致, 用 b.date 对应的净值; 没有 b.date 时退到 f.price
     var sh_buys = f.buys.reduce((s, b) => {
       if (!b.date) return s;
       var matched = navHistory.find(r => r.code === f.code && r.date === b.date);
@@ -1271,10 +1260,8 @@ function renderSummary() {
     var mv = curPrice * sh;
     var pnl = mv-inv;
     var rate = inv>0 ? (pnl/inv*100) : 0;
-    // 回撤: 现价相对高点的跌幅, <= 0
     var pHigh = parseFloat(f.priceHigh) || 0;
     var drawdown = (pHigh > 0 && curPrice > 0) ? ((curPrice - pHigh) / pHigh * 100) : 0;
-    // 兼容旧字段 dropPct (用回撤)
     var dropPct = drawdown;
     var prog = f.target>0 ? (inv/f.target*100) : 0;
     totalInv += inv; totalVal += mv; totalTgt += f.target; totalShares += sh;
@@ -1296,7 +1283,6 @@ function renderSummary() {
   html += '<div class="sum-table-wrap"><table class="buy-table"><thead><tr><th>品种</th><th>现价</th><th>回撤</th><th>金额</th><th>份额</th><th>收益</th><th>收益率</th><th>投入</th><th>完成度</th></tr></thead><tbody>';
   stats.forEach(s => {
     var pc = s.pnl >= 0 ? '#dc2626' : '#16a34a';
-    // 回撤颜色: 0 = 灰(没跌), 跌得越深越绿
     var dc = s.drawdown < -10 ? '#16a34a' : (s.drawdown < 0 ? '#4ade80' : '#93A3BD');
     var dropStr = s.drawdown.toFixed(1) + '%';
     html += '<tr>';
@@ -1398,41 +1384,34 @@ function updateCardValues(i) {
   var card = document.querySelectorAll('.fund')[i];
   if (!card) return;
   var { tier, currentAmt, currentTrigger, currentTier, currentIsBuy, neighbors } = calcCurrent(f);
-  // 回撤: 现价相对高点
   var pHighU = parseFloat(f.priceHigh) || 0;
   var curU = parseFloat(f.price) || 0;
   var dropPct = (pHighU > 0 && curU > 0) ? ((curU - pHighU) / pHighU * 100) : (((f.price - f.basePrice) / f.basePrice * 100) || 0);
   var dropColor = dropPct < -10 ? '#16a34a' : (dropPct < 0 ? '#4ade80' : '#93A3BD');
-  var inv_base = 0;  // 合计只算 buys, 不算 initShares
+  var inv_base = 0;
   var inv_buys = f.buys.reduce((s, b) => s + (b.amount || 0), 0);
   var invested = inv_base + inv_buys;
-  var sh_base = 0;  // 合计只算 buys, 不算 initShares
-  // 注意：此处份额计算去掉 Math.abs，使卖出为负
-  // _shares: 用户直接输入的份额(无净值时), 或自动算出的份额
+  var sh_base = 0;
   var sh_buys = f.buys.reduce((s, b) => {
-    if (b._shares != null) return s + b._shares; // 卖出无匹配时优先用 _shares
+    if (b._shares != null) return s + b._shares;
     if (!b.date) return s;
     var navHistory = (() => { try { return JSON.parse(localStorage.getItem('nav_history') || '[]'); } catch(e) { return []; }})();
     var matched = navHistory.find(r => r.code === f.code && r.date === b.date);
     var price = matched ? matched.nav : (b.price || f.price || 0);
-    return price > 0 ? s + (b.amount / price) : s;   // 移除 Math.abs
+    return price > 0 ? s + (b.amount / price) : s;
   }, 0);
   var shares = sh_base + sh_buys;
-  // 收益: 金额 × 涨幅 = amount × (Sday 净值 - Bday 净值) / Bday 净值
-  // 只算 Sday 非空 + Sday 有数据
   var navHistory = (() => { try { return JSON.parse(localStorage.getItem("nav_history") || "[]"); } catch(e) { return []; }})();
   var totalPnl = (f.buys || []).reduce(function(s, b) {
     if (!b.sday || b.sday === "") return s;
     var sdayRecord = navHistory.find(function(r) { return r.code === f.code && r.date === b.sday; });
     if (!sdayRecord || sdayRecord.nav == null) return s;
-    // Bday 净值: 优先 b.price, 否则查 nav_history
     var buyNav = b.price;
     if (buyNav == null || buyNav <= 0) {
       var bdayRecord = navHistory.find(function(r) { return r.code === f.code && r.date === b.date; });
       buyNav = bdayRecord ? bdayRecord.nav : 0;
     }
     if (buyNav <= 0) return s;
-    // 金额 × 涨幅 (涨幅 = (Sday - Bday) / Bday)
     return s + (b.amount || 0) * (sdayRecord.nav - buyNav) / buyNav;
   }, 0);
   var curPrice = f.price || 0;
@@ -1479,12 +1458,12 @@ function updateCardValues(i) {
     var cells = foot.querySelectorAll('div');
     if (cells[2]) {
       var b = cells[2].querySelector('b');
-      if (b) b.textContent = Math.round(inv_buys).toLocaleString();   // 改为 inv_buys
+      if (b) b.textContent = Math.round(inv_buys).toLocaleString();
       else cells[2].textContent = Math.round(inv_buys).toLocaleString();
     }
     if (cells[3]) {
       var b = cells[3].querySelector('b');
-      if (b) b.textContent = Math.round(sh_buys).toLocaleString();   // 改为 sh_buys
+      if (b) b.textContent = Math.round(sh_buys).toLocaleString();
       else cells[3].textContent = Math.round(sh_buys).toLocaleString();
     }
   }
@@ -1519,12 +1498,11 @@ function renderFund(f, i) {
     });
   }
   var { tier, currentAmt, currentTrigger, currentTier, currentIsBuy, neighbors } = calcCurrent(f);
-  // 回撤: 现价相对高点; 没有高点就退到相对基准
   var pHigh = parseFloat(f.priceHigh) || 0;
   var curPrice0 = parseFloat(f.price) || 0;
   var dropPct;
   if (pHigh > 0 && curPrice0 > 0) {
-    dropPct = (curPrice0 - pHigh) / pHigh * 100;  // 永远 <= 0
+    dropPct = (curPrice0 - pHigh) / pHigh * 100;
   } else {
     dropPct = ((f.price - f.basePrice) / f.basePrice * 100) || 0;
   }
@@ -1534,15 +1512,14 @@ function renderFund(f, i) {
   var invested = inv_base + inv_buys;
   var sh_base = f.initShares || 0;
   var sh_buys = f.buys.reduce((s, b) => {
-    if (b._shares != null) return s + b._shares; // 卖出无匹配时优先用 _shares
+    if (b._shares != null) return s + b._shares;
     if (!b.date) return s;
     var navHistory = (() => { try { return JSON.parse(localStorage.getItem('nav_history') || '[]'); } catch(e) { return []; }})();
     var matched = navHistory.find(r => r.code === f.code && r.date === b.date);
     var price = matched ? matched.nav : (f.price || 0);
-    return price > 0 ? s + (b.amount / price) : s;   // 去掉 Math.abs
+    return price > 0 ? s + (b.amount / price) : s;
   }, 0);
   var shares = sh_base + sh_buys;
-  // 收益: 金额 × 涨幅 (与单行一致) 只算 Sday 非空 + Sday 有数据
   var navHistory = (() => { try { return JSON.parse(localStorage.getItem("nav_history") || "[]"); } catch(e) { return []; }})();
   var totalPnl = (f.buys || []).reduce(function(s, b) {
     if (!b.sday || b.sday === "") return s;
@@ -1601,15 +1578,12 @@ function renderFund(f, i) {
       else sdayShort = sday;
     }
 
-    // ---- 根据买卖类型决定金额/份额控件 ----
     var amtHtml, shareHtml;
     if (isSell) {
-      // 卖出：份额可编辑，金额只读
       var shareVal = (b._shares != null) ? Math.abs(b._shares) : 0;
       amtHtml = `<span class="amt-readonly" style="color:inherit;font-weight:700">${displayAmt ? Math.round(displayAmt).toLocaleString() : '-'}</span>`;
       shareHtml = `<input type="number" step="0.01" id="bshare-${i}-${bi}" value="${shareVal ? shareVal.toFixed(2) : ''}" class="bcell" style="width:100%;font-weight:700;color:#22c55e">`;
     } else {
-      // 买入：金额可编辑，份额只读
       var shareVal = (b._shares != null) ? b._shares : 0;
       amtHtml = `<input type="number" step="1" id="bamt-${i}-${bi}" value="${displayAmt ? Math.round(displayAmt) : ''}" class="bcell amt-pos" style="width:100%;color:#dc2626">`;
       shareHtml = `<span class="bshares" data-bi="${bi}" style="color:inherit;font-size:13px;font-weight:700">${shareVal ? shareVal.toFixed(2) : '-'}</span>`;
@@ -1803,7 +1777,6 @@ function renderFund(f, i) {
           <div class="buy-grid-body">
             ${buyRowsHtml}
           </div>
-          <!-- 合计 -->
           <div class="buy-grid-foot">
             <div class="bf-label"><b>合计</b></div>
             <div></div>
@@ -2317,13 +2290,20 @@ function importData(file) {
   reader.onload = e => {
     try {
       var data = JSON.parse(e.target.result);
-      if (Array.isArray(data) && data.length > 0) {
-        state = data;
+      if (data.funds && Array.isArray(data.funds)) {
+        state = data.funds;
+        if (data.nav_history) {
+          localStorage.setItem('nav_history', JSON.stringify(data.nav_history));
+        }
         save();
         render();
-        alert('数据已恢复');
-      } else { alert('文件格式错误'); }
-    } catch(err) { alert('解析失败: ' + err.message); }
+        alert('数据恢复成功');
+      } else {
+        alert('文件格式错误，缺少 funds 字段');
+      }
+    } catch(err) {
+      alert('解析失败: ' + err.message);
+    }
   };
   reader.readAsText(file);
 }
@@ -2360,6 +2340,40 @@ document.getElementById('themeBtn')?.addEventListener('click', toggleTheme);
 document.getElementById('logoutBtn')?.addEventListener('click', logout);
 applyTheme();
 document.getElementById('excelBtn')?.addEventListener('click', exportExcelToFile);
+
+// =====================================================================
+//  新增：导出菜单（导出收益表 或 JSON 备份）
+// =====================================================================
+function showExportMenu() {
+  showModal({
+    title: '导出数据',
+    message: '请选择要导出的内容：',
+    okText: '📊 导出收益表',
+    cancelText: '💾 导出 JSON 备份',
+  }).then(choice => {
+    if (choice === true) {
+      saveData(); // 原有的收益表导出
+    } else if (choice === false) {
+      exportJSONData();
+    }
+  });
+}
+
+function exportJSONData() {
+  var data = {
+    funds: state,
+    nav_history: getNavHistory(),
+    exportTime: new Date().toISOString()
+  };
+  var json = JSON.stringify(data, null, 2);
+  var blob = new Blob([json], { type: 'application/json' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'funds_backup_' + new Date().toISOString().split('T')[0] + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 async function addNewFund() {
   var name = await showModal({ input: 'text', message: '基金名称 (如: 白酒/医药/新能源):', default: '新基金' });
@@ -2464,7 +2478,7 @@ function smartBday(dateStr, timeStr) {
   }
 }
 
-// ============== OCR 识别交易记录（使用改进后的 parseBuyRecords） ==============
+// ============== OCR 识别交易记录 ==============
 var ocrWorker = null;
 async function loadTesseractLib() {
   if (window.Tesseract) return;
@@ -2835,7 +2849,7 @@ window.alert = function(msg) {
   console.warn('alert 被调用', msg);
 };
 
-// 点 + : 录入金额 → 有净值就算份额, 没净值就只存金额(份额留空), 整行标记红
+// 点 + : 录入金额
 function addBuyByAmountDialog(i) {
   var f = state[i];
   var navHistory = (() => { try { return JSON.parse(localStorage.getItem('nav_history') || '[]'); } catch(e) { return []; }})();
@@ -2886,7 +2900,7 @@ function addBuyByAmountDialog(i) {
   });
 }
 
-// 点 − : 录入份额 → 有净值就算金额, 没净值就只存份额(金额留空), 整行标记绿, amount 留负号
+// 点 − : 录入份额
 function subBuyBySharesDialog(i) {
   var f = state[i];
   var navHistory = (() => { try { return JSON.parse(localStorage.getItem('nav_history') || '[]'); } catch(e) { return []; }})();
@@ -2903,7 +2917,6 @@ function subBuyBySharesDialog(i) {
   var nav = matched ? matched.nav : 0;
   var dateLabel = bday + (matched ? ' 净值 ' + nav.toFixed(4) : ' (无匹配)');
 
-  // 计算当前持有份额 = initShares + 历次买卖份额(卖出为负)
   var navHistory2 = (() => { try { return JSON.parse(localStorage.getItem('nav_history') || '[]'); } catch(e) { return []; }})();
   var holdShares = (f.initShares || 0) + (f.buys || []).reduce((s, b) => {
     if (b._shares != null) return s + b._shares;
