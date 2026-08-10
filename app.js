@@ -1854,7 +1854,7 @@ function renderFund(f, i) {
       </div>
 
       <!-- 净值走势图（带周期选择） -->
-      <div class="chart-section" style="margin: 12px 0; height: 180px; max-height: 200px; overflow: hidden;">
+      <div class="chart-section" style="margin: 12px 0; height: 200px; max-height: 220px; overflow: hidden;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
           <span class="section-title" style="font-size:14px;">📈 净值走势</span>
           <div style="display:flex; gap:6px; font-size:11px;">
