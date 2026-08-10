@@ -1,4 +1,4 @@
-// === 完整 app.js（含净值绘图、历史分页、导出修复） ===
+// === 完整 app.js（净值走势图支持周期选择，图表尺寸固定） ===
 
 // 全局错误兜底
 window.addEventListener('error', e => {
@@ -458,8 +458,9 @@ function render() {
   // 绘制净值图（如果当前是基金详情页）
   if (activeTab < state.length) {
     var f = state[activeTab];
+    // 使用默认周期（1个月）
     setTimeout(function() {
-      drawNavChart(f.code, 'navChart-' + activeTab);
+      drawNavChart(f.code, 'navChart-' + activeTab, '1M');
     }, 100);
   }
 
@@ -1508,7 +1509,7 @@ function updateCardValues(i) {
 }
 
 // =====================================================================
-//  renderFund（新增净值绘图 canvas）
+//  renderFund（包含净值走势图及周期选择）
 // =====================================================================
 function renderFund(f, i) {
   if (Array.isArray(f.buys)) {
@@ -1836,10 +1837,17 @@ function renderFund(f, i) {
         </div>
       </div>
 
-      <!-- 净值走势图 -->
-      <div class="chart-section" style="margin: 12px 0;">
-        <div class="section-title">📈 净值走势</div>
-        <canvas id="navChart-${i}" style="width:100%; height:180px;"></canvas>
+      <!-- 净值走势图（带周期选择） -->
+      <div class="chart-section" style="margin: 12px 0; height: 180px; max-height: 200px; overflow: hidden;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <span class="section-title" style="font-size:14px;">📈 净值走势</span>
+          <div style="display:flex; gap:6px; font-size:11px;">
+            <button class="chart-period" data-period="1M" style="background:rgba(0,240,255,0.2); border:1px solid #00f0ff; border-radius:4px; padding:2px 8px; color:#fff; cursor:pointer;">1月</button>
+            <button class="chart-period" data-period="3M" style="background:transparent; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:2px 8px; color:#93A3BD; cursor:pointer;">3月</button>
+            <button class="chart-period" data-period="1Y" style="background:transparent; border:1px solid rgba(255,255,255,0.2); border-radius:4px; padding:2px 8px; color:#93A3BD; cursor:pointer;">1年</button>
+          </div>
+        </div>
+        <canvas id="navChart-${i}" style="width:100%; height:100%;"></canvas>
       </div>
 
       <div class="param-section">
@@ -1881,8 +1889,8 @@ function updateTime() {
   if (el) el.textContent = '';
 }
 
-// ==================== 净值绘图（支持 Chart.js 动态加载） ====================
-function drawNavChart(fundCode, canvasId) {
+// ==================== 净值绘图（支持周期选择） ====================
+function drawNavChart(fundCode, canvasId, period) {
   var canvas = document.getElementById(canvasId);
   if (!canvas) return;
 
@@ -1890,7 +1898,7 @@ function drawNavChart(fundCode, canvasId) {
   if (typeof Chart === 'undefined') {
     var script = document.createElement('script');
     script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
-    script.onload = function() { setTimeout(function() { drawNavChart(fundCode, canvasId); }, 100); };
+    script.onload = function() { setTimeout(function() { drawNavChart(fundCode, canvasId, period || '1M'); }, 100); };
     document.head.appendChild(script);
     return;
   }
@@ -1909,13 +1917,36 @@ function drawNavChart(fundCode, canvasId) {
     return;
   }
 
-  var labels = records.map(r => r.date.slice(5)); // MM-DD
-  var data = records.map(r => r.nav);
+  // 根据周期过滤数据
+  var now = new Date();
+  var cutoff = new Date();
+  if (period === '1M') cutoff.setMonth(now.getMonth() - 1);
+  else if (period === '3M') cutoff.setMonth(now.getMonth() - 3);
+  else if (period === '1Y') cutoff.setFullYear(now.getFullYear() - 1);
+  else cutoff.setMonth(now.getMonth() - 1); // default 1M
+
+  var filtered = records.filter(r => {
+    var d = new Date(r.date);
+    return d >= cutoff;
+  });
+
+  // 如果过滤后数据不足，则使用全部数据（提示用户）
+  if (filtered.length < 2) {
+    filtered = records;
+    // 在图表上显示提示（但直接使用全部数据）
+  }
+
+  var labels = filtered.map(r => r.date.slice(5)); // MM-DD
+  var data = filtered.map(r => r.nav);
 
   // 如果已存在 Chart 实例，销毁它
   if (canvas._chart) {
     canvas._chart.destroy();
   }
+
+  // 重置 canvas 样式
+  canvas.style.height = '100%';
+  canvas.style.width = '100%';
 
   var ctx = canvas.getContext('2d');
   var chart = new Chart(ctx, {
@@ -2162,7 +2193,7 @@ function saveAsExcel() {
   }
 }
 
-// ==================== 导入（修复版） ====================
+// ==================== 导入 ====================
 function importData(file) {
   showToast('⏳ 正在导入数据...');
   var reader = new FileReader();
@@ -2192,7 +2223,7 @@ function importData(file) {
   reader.readAsText(file);
 }
 
-// ==================== 导出菜单（新版） ====================
+// ==================== 导出菜单 ====================
 function showExportMenu() {
   var overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)';
@@ -2724,10 +2755,8 @@ function showNavModal() {
   box.querySelector('#navClose').onclick = close;
   overlay.onclick = (e) => { if (e.target === overlay) close(); };
 
-  // 首次渲染表格
   renderTable();
 
-  // 添加记录
   box.querySelector('#navAddBtn').onclick = function() {
     var sel = box.querySelector('#navFundSelect');
     var dateInp = box.querySelector('#navDate');
@@ -2742,7 +2771,6 @@ function showNavModal() {
       return;
     }
     var list = getNavHistory();
-    // 检查是否已存在，若存在则覆盖
     var existIdx = list.findIndex(r => r.code === code && r.date === date);
     if (existIdx >= 0) {
       list[existIdx] = { code, name, date, nav, ts: Date.now() };
@@ -2750,7 +2778,6 @@ function showNavModal() {
       list.push({ code, name, date, nav, ts: Date.now() });
     }
     saveNavHistory(list);
-    // 更新当前基金价格
     var f = state.find(x => x.code === code);
     if (f) {
       f.price = nav;
@@ -2759,14 +2786,12 @@ function showNavModal() {
       save();
       render();
     }
-    // 重置分页到第一页，刷新表格
     currentPage = 0;
     renderTable();
     valInp.value = '';
-    // 如果当前显示的是该基金，重新绘制图表
     if (activeTab < state.length && state[activeTab].code === code) {
       setTimeout(function() {
-        drawNavChart(code, 'navChart-' + activeTab);
+        drawNavChart(code, 'navChart-' + activeTab, '1M');
       }, 100);
     }
   };
@@ -2988,3 +3013,29 @@ function getNavHistory() {
 function saveNavHistory(list) {
   localStorage.setItem('nav_history', JSON.stringify(list));
 }
+
+// ==================== 绑定周期选择按钮事件（在 render 中调用） ====================
+// 在 render() 函数末尾，添加事件委托（由于动态生成，使用事件委托）
+document.addEventListener('click', function(e) {
+  var btn = e.target.closest('.chart-period');
+  if (!btn) return;
+  var period = btn.dataset.period;
+  var canvas = btn.closest('.chart-section').querySelector('canvas');
+  if (!canvas) return;
+  var id = canvas.id;
+  var idx = id.replace('navChart-', '');
+  if (idx !== '' && state[parseInt(idx)]) {
+    var code = state[parseInt(idx)].code;
+    // 更新按钮样式
+    var siblings = btn.parentElement.querySelectorAll('.chart-period');
+    siblings.forEach(b => {
+      b.style.background = 'transparent';
+      b.style.borderColor = 'rgba(255,255,255,0.2)';
+      b.style.color = '#93A3BD';
+    });
+    btn.style.background = 'rgba(0,240,255,0.2)';
+    btn.style.borderColor = '#00f0ff';
+    btn.style.color = '#fff';
+    drawNavChart(code, id, period);
+  }
+});
