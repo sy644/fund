@@ -1,4 +1,4 @@
-// === 完整 app.js（净值走势图支持周期选择，图表尺寸固定） ===
+// === 完整 app.js（整合：交易OCR + 净值OCR + 图表周期 + 导入/导出 + 分页） ===
 
 // 全局错误兜底
 window.addEventListener('error', e => {
@@ -458,7 +458,6 @@ function render() {
   // 绘制净值图（如果当前是基金详情页）
   if (activeTab < state.length) {
     var f = state[activeTab];
-    // 使用默认周期（1个月）
     setTimeout(function() {
       drawNavChart(f.code, 'navChart-' + activeTab, '1M');
     }, 100);
@@ -741,7 +740,7 @@ if (document.readyState === 'loading') {
 }
 
 // =====================================================================
-//  OCR 解析
+//  OCR 解析 - 交易记录 & 净值
 // =====================================================================
 function parseBuyRecords(text) {
   var lines = text.split(/\n+/).map(l => l.trim()).filter(Boolean);
@@ -788,6 +787,23 @@ function parseBuyRecords(text) {
     rows.push({ date, time, amount, type });
   }
   return rows;
+}
+
+function parseNavRecords(text) {
+  var lines = text.split(/\n+/).map(l => l.trim()).filter(Boolean);
+  var records = [];
+  var re = /(20\d{2})[\-\/.](\d{1,2})[\-\/.](\d{1,2})\s+([\d.]+)/;
+  for (var line of lines) {
+    var m = line.match(re);
+    if (m) {
+      var date = m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0');
+      var nav = parseFloat(m[4]);
+      if (!isNaN(nav) && nav > 0) {
+        records.push({ date, nav });
+      }
+    }
+  }
+  return records;
 }
 
 // =====================================================================
@@ -1894,7 +1910,6 @@ function drawNavChart(fundCode, canvasId, period) {
   var canvas = document.getElementById(canvasId);
   if (!canvas) return;
 
-  // 如果 Chart 库未加载，动态加载并重试
   if (typeof Chart === 'undefined') {
     var script = document.createElement('script');
     script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
@@ -1917,34 +1932,25 @@ function drawNavChart(fundCode, canvasId, period) {
     return;
   }
 
-  // 根据周期过滤数据
   var now = new Date();
   var cutoff = new Date();
   if (period === '1M') cutoff.setMonth(now.getMonth() - 1);
   else if (period === '3M') cutoff.setMonth(now.getMonth() - 3);
   else if (period === '1Y') cutoff.setFullYear(now.getFullYear() - 1);
-  else cutoff.setMonth(now.getMonth() - 1); // default 1M
+  else cutoff.setMonth(now.getMonth() - 1);
 
   var filtered = records.filter(r => {
     var d = new Date(r.date);
     return d >= cutoff;
   });
 
-  // 如果过滤后数据不足，则使用全部数据（提示用户）
-  if (filtered.length < 2) {
-    filtered = records;
-    // 在图表上显示提示（但直接使用全部数据）
-  }
+  if (filtered.length < 2) filtered = records;
 
-  var labels = filtered.map(r => r.date.slice(5)); // MM-DD
+  var labels = filtered.map(r => r.date.slice(5));
   var data = filtered.map(r => r.nav);
 
-  // 如果已存在 Chart 实例，销毁它
-  if (canvas._chart) {
-    canvas._chart.destroy();
-  }
+  if (canvas._chart) canvas._chart.destroy();
 
-  // 重置 canvas 样式
   canvas.style.height = '100%';
   canvas.style.width = '100%';
 
@@ -1966,18 +1972,10 @@ function drawNavChart(fundCode, canvasId, period) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false }
-      },
+      plugins: { legend: { display: false } },
       scales: {
-        x: {
-          ticks: { color: '#93A3BD', maxTicksLimit: 10 },
-          grid: { color: 'rgba(255,255,255,0.05)' }
-        },
-        y: {
-          ticks: { color: '#93A3BD' },
-          grid: { color: 'rgba(255,255,255,0.05)' }
-        }
+        x: { ticks: { color: '#93A3BD', maxTicksLimit: 10 }, grid: { color: 'rgba(255,255,255,0.05)' } },
+        y: { ticks: { color: '#93A3BD' }, grid: { color: 'rgba(255,255,255,0.05)' } }
       }
     }
   });
@@ -2438,7 +2436,7 @@ function smartBday(dateStr, timeStr) {
   }
 }
 
-// ============== OCR 相关 ==============
+// ============== OCR 相关（交易 + 净值） ==============
 var ocrWorker = null;
 async function loadTesseractLib() {
   if (window.Tesseract) return;
@@ -2464,17 +2462,26 @@ async function runOCR(file, f, i) {
     var { data } = await worker.recognize(file);
     var text = data.text || '';
     console.log('OCR text:\n' + text);
-    var records = parseBuyRecords(text);
-    if (records.length === 0) {
-      showOCRDebug(text, '未识别到交易记录');
+
+    // 先尝试解析交易记录
+    var tradeRecords = parseBuyRecords(text);
+    if (tradeRecords.length > 0) {
+      var enriched = tradeRecords.map(r => {
+        var b = smartBday(r.date, r.time);
+        return { ...r, bday: b };
+      });
+      showOCRConfirmDialog(f, i, enriched, text, 'trade');
       return;
     }
-    var enriched = records.map(r => {
-      var b = smartBday(r.date, r.time);
-      console.log('[smartBday]', r.date, r.time, '→', b);
-      return { ...r, bday: b };
-    });
-    showOCRConfirmDialog(f, i, enriched, text);
+
+    // 尝试解析净值记录
+    var navRecords = parseNavRecords(text);
+    if (navRecords.length > 0) {
+      showOCRConfirmDialog(f, i, navRecords, text, 'nav');
+      return;
+    }
+
+    showOCRDebug(text, '未识别到交易记录或净值数据');
   } catch(err) {
     showToast('识别失败: ' + err.message);
     console.error(err);
@@ -2501,35 +2508,44 @@ function showOCRDebug(text, reason) {
   overlay.onclick = (e) => { if (e.target === overlay) document.body.removeChild(overlay); };
 }
 
-function showOCRConfirmDialog(f, i, records) {
+function showOCRConfirmDialog(f, i, records, text, mode) {
   var overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:99999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)';
   var box = document.createElement('div');
   box.style.cssText = 'background:linear-gradient(135deg, rgba(20,26,56,0.98), rgba(10,16,36,0.98));border:1.5px solid #00f0ff;border-radius:16px;padding:18px;min-width:320px;max-width:90vw;max-height:80vh;overflow-y:auto;box-shadow:0 0 24px rgba(0,240,255,0.4);color:#fff;font-family:-apple-system,sans-serif';
 
-  var rowsHtml = records.map((r, idx) => {
-    var bdayChanged = r.bday !== r.date;
-    var isSell = r.type === 'sell';
-    var typeLabel = isSell ? '卖出' : '买入';
-    var typeColor = isSell ? '#22c55e' : '#fb7185';
-    return `<div style="display:flex;gap:6px;align-items:center;padding:8px;background:rgba(0,0,0,0.3);border-radius:8px;margin-bottom:6px;font-size:11px;flex-wrap:wrap">
-      <span style="color:#fbbf24;font-weight:700;min-width:18px">${idx+1}</span>
-      <span style="color:${typeColor};font-weight:800;border:1px solid ${typeColor};border-radius:4px;padding:0 4px;font-size:10px">${typeLabel}</span>
-      <span style="color:#93A3BD">${r.date} ${r.time}</span>
-      <span style="color:#fff;font-weight:800">→</span>
-      <span style="color:#00f5c8;font-weight:800">${r.bday}</span>
-      <span style="color:#67e8f9;font-weight:700;margin-left:auto">¥${r.amount.toFixed(2)}</span>
-      <span style="font-size:10px;color:${bdayChanged ? '#fbbf24' : '#475569'}">${bdayChanged ? '顺延' : '当天'}</span>
-    </div>`;
+  var title = mode === 'nav' ? '📈 识别到净值数据' : '📷 识别到交易记录';
+  var previewRows = records.map((r, idx) => {
+    if (mode === 'nav') {
+      return `<div style="display:flex;gap:10px;padding:4px 0;font-size:13px;border-bottom:1px solid rgba(255,255,255,0.05)">
+        <span style="color:#93A3BD">${idx+1}.</span>
+        <span style="color:#fff">${r.date}</span>
+        <span style="color:#00f5c8;font-weight:700">${r.nav.toFixed(4)}</span>
+      </div>`;
+    } else {
+      var bdayChanged = r.bday !== r.date;
+      var isSell = r.type === 'sell';
+      var typeLabel = isSell ? '卖出' : '买入';
+      var typeColor = isSell ? '#22c55e' : '#fb7185';
+      return `<div style="display:flex;gap:6px;align-items:center;padding:8px;background:rgba(0,0,0,0.3);border-radius:8px;margin-bottom:6px;font-size:11px;flex-wrap:wrap">
+        <span style="color:#fbbf24;font-weight:700;min-width:18px">${idx+1}</span>
+        <span style="color:${typeColor};font-weight:800;border:1px solid ${typeColor};border-radius:4px;padding:0 4px;font-size:10px">${typeLabel}</span>
+        <span style="color:#93A3BD">${r.date} ${r.time}</span>
+        <span style="color:#fff;font-weight:800">→</span>
+        <span style="color:#00f5c8;font-weight:800">${r.bday}</span>
+        <span style="color:#67e8f9;font-weight:700;margin-left:auto">¥${r.amount.toFixed(2)}</span>
+        <span style="font-size:10px;color:${bdayChanged ? '#fbbf24' : '#475569'}">${bdayChanged ? '顺延' : '当天'}</span>
+      </div>`;
+    }
   }).join('');
 
+  var details = mode === 'nav' ? '' : `<details style="font-size:10px;color:#475569;margin-bottom:10px"><summary style="cursor:pointer;color:#67e8f9">🔧 调试: 原始数据</summary><pre style="background:rgba(0,0,0,0.4);padding:8px;border-radius:6px;margin-top:6px;color:#67e8f9;font-size:10px;overflow-x:auto">${JSON.stringify(records, null, 2).replace(/</g,'&lt;')}</pre></details>`;
+
   box.innerHTML = `
-    <div style="font-size:15px;font-weight:800;color:#00f0ff;letter-spacing:1px;margin-bottom:12px;text-shadow:0 0 8px rgba(0,240,255,0.5)">📷 识别到 ${records.length} 条</div>
-    <div style="font-size:11px;color:#93A3BD;margin-bottom:10px">智能日期: 9:30-15:00 之内=当天, 之外=顺延到下个交易日</div>
-    <details style="font-size:10px;color:#475569;margin-bottom:10px"><summary style="cursor:pointer;color:#67e8f9">🔧 调试: 原始数据 (date/time/bday)</summary>
-      <pre style="background:rgba(0,0,0,0.4);padding:8px;border-radius:6px;margin-top:6px;color:#67e8f9;font-size:10px;overflow-x:auto">${JSON.stringify(records, null, 2).replace(/</g,'&lt;')}</pre>
-    </details>
-    <div style="max-height:50vh;overflow-y:auto;margin-bottom:14px">${rowsHtml}</div>
+    <div style="font-size:15px;font-weight:800;color:#00f0ff;letter-spacing:1px;margin-bottom:12px;text-shadow:0 0 8px rgba(0,240,255,0.5)">${title}</div>
+    <div style="font-size:11px;color:#93A3BD;margin-bottom:10px">${mode === 'nav' ? '将导入以下净值记录到历史中，并更新当前基金价格' : '智能日期: 9:30-15:00 之内=当天, 之外=顺延到下个交易日'}</div>
+    ${details}
+    <div style="max-height:50vh;overflow-y:auto;margin-bottom:14px">${previewRows}</div>
     <div style="display:flex;gap:10px">
       <button id="ocrCancel" style="flex:1;padding:10px;background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.2);border-radius:10px;font-size:13px;font-weight:600;cursor:pointer">取消</button>
       <button id="ocrOk" style="flex:1;padding:10px;background:linear-gradient(135deg,#00f0ff,#00b4d8);color:#05060b;border:none;border-radius:10px;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 0 12px rgba(0,240,255,0.4)">全部添加</button>
@@ -2537,52 +2553,87 @@ function showOCRConfirmDialog(f, i, records) {
   `;
   overlay.appendChild(box);
   document.body.appendChild(overlay);
+
   box.querySelector('#ocrCancel').onclick = () => document.body.removeChild(overlay);
-  box.querySelector('#ocrOk').onclick = () => {
-    var prev = JSON.stringify(state);
-    var navHistory = (() => { try { return JSON.parse(localStorage.getItem('nav_history') || '[]'); } catch(e) { return []; }})();
-    var hitCount = 0, missCount = 0, buyCount = 0, sellCount = 0;
-    records.forEach(r => {
-      var matched = navHistory.find(x => x.code === f.code && x.date === r.bday);
-      var nav = matched ? matched.nav : 0;
-      var isSell = r.type === 'sell';
-      if (isSell) sellCount++; else buyCount++;
-      var newBuy = {
-        date: r.bday,
-        type: isSell ? 'sell' : 'buy',
-        price: nav,
-        amount: 0,
-        tier: 0,
-        _mark: isSell ? 'green' : 'red',
-      };
-      if (isSell) {
-        var sellAmt = Math.abs(r.amount || 0);
-        if (nav > 0) {
-          newBuy._shares = -(sellAmt / nav);
-          newBuy.amount = -sellAmt;
-          hitCount++;
+
+  box.querySelector('#ocrOk').onclick = function() {
+    if (mode === 'nav') {
+      var navList = getNavHistory();
+      var name = f.name;
+      var code = f.code;
+      var added = 0;
+      records.forEach(r => {
+        var existIdx = navList.findIndex(item => item.code === code && item.date === r.date);
+        var entry = { code, name, date: r.date, nav: r.nav, ts: Date.now() };
+        if (existIdx >= 0) {
+          navList[existIdx] = entry;
         } else {
-          newBuy.amount = 0;
-          missCount++;
+          navList.push(entry);
         }
-      } else {
-        newBuy.amount = Math.abs(r.amount || 0);
-        if (nav > 0) {
-          newBuy._shares = newBuy.amount / nav;
-          hitCount++;
-        } else {
-          missCount++;
-        }
+        added++;
+      });
+      saveNavHistory(navList);
+      var sorted = records.slice().sort((a, b) => a.date.localeCompare(b.date));
+      var latest = sorted[sorted.length - 1];
+      if (latest) {
+        f.price = latest.nav;
+        f.priceDate = latest.date;
+        f._manualPrice = true;
+        save();
+        render();
       }
-      f.buys.push(newBuy);
-    });
-    save(prev);
-    document.body.removeChild(overlay);
-    render();
-    var msg = `✅ 已添加 ${records.length} 条 (买${buyCount}/卖${sellCount})`;
-    if (missCount > 0) msg += ` · ${hitCount} 条匹配净值, ${missCount} 条无匹配`;
-    showToast(msg);
+      document.body.removeChild(overlay);
+      showToast('✅ 已导入 ' + added + ' 条净值记录');
+      setTimeout(function() {
+        drawNavChart(f.code, 'navChart-' + i, '1M');
+      }, 100);
+    } else {
+      var prev = JSON.stringify(state);
+      var navHistory = (() => { try { return JSON.parse(localStorage.getItem('nav_history') || '[]'); } catch(e) { return []; }})();
+      var hitCount = 0, missCount = 0, buyCount = 0, sellCount = 0;
+      records.forEach(r => {
+        var matched = navHistory.find(x => x.code === f.code && x.date === r.bday);
+        var nav = matched ? matched.nav : 0;
+        var isSell = r.type === 'sell';
+        if (isSell) sellCount++; else buyCount++;
+        var newBuy = {
+          date: r.bday,
+          type: isSell ? 'sell' : 'buy',
+          price: nav,
+          amount: 0,
+          tier: 0,
+          _mark: isSell ? 'green' : 'red',
+        };
+        if (isSell) {
+          var sellAmt = Math.abs(r.amount || 0);
+          if (nav > 0) {
+            newBuy._shares = -(sellAmt / nav);
+            newBuy.amount = -sellAmt;
+            hitCount++;
+          } else {
+            newBuy.amount = 0;
+            missCount++;
+          }
+        } else {
+          newBuy.amount = Math.abs(r.amount || 0);
+          if (nav > 0) {
+            newBuy._shares = newBuy.amount / nav;
+            hitCount++;
+          } else {
+            missCount++;
+          }
+        }
+        f.buys.push(newBuy);
+      });
+      save(prev);
+      document.body.removeChild(overlay);
+      render();
+      var msg = `✅ 已添加 ${records.length} 条 (买${buyCount}/卖${sellCount})`;
+      if (missCount > 0) msg += ` · ${hitCount} 条匹配净值, ${missCount} 条无匹配`;
+      showToast(msg);
+    }
   };
+
   overlay.onclick = (e) => { if (e.target === overlay) document.body.removeChild(overlay); };
 }
 
@@ -2642,7 +2693,7 @@ function showAddNavDialog(code, name, date) {
   overlay.onclick = (e) => { if (e.target === overlay) close(); };
 }
 
-// ============== 净值历史弹窗（带分页） ==============
+// ============== 净值历史弹窗（带分页 + 批量导入） ==============
 function showNavModal() {
   var old = document.getElementById('navModal');
   if (old) old.remove();
@@ -2663,7 +2714,7 @@ function showNavModal() {
   }
 
   function renderTable() {
-    navList = getNavHistory().slice().reverse(); // 最新在前
+    navList = getNavHistory().slice().reverse();
     var totalPages = Math.ceil(navList.length / pageSize) || 1;
     if (currentPage >= totalPages) currentPage = Math.max(0, totalPages - 1);
     var start = currentPage * pageSize;
@@ -2729,6 +2780,65 @@ function showNavModal() {
     });
   }
 
+  // 批量导入净值
+  function batchImportNav(text) {
+    var lines = text.split(/\n+/).map(l => l.trim()).filter(Boolean);
+    var records = [];
+    var re = /(20\d{2}[-/.]\d{1,2}[-/.]\d{1,2})\s+([\d.]+)/;
+    var sel = box.querySelector('#navFundSelect');
+    var code = sel.value;
+    var name = sel.options[sel.selectedIndex].dataset.name;
+
+    for (var line of lines) {
+      var m = line.match(re);
+      if (m) {
+        var date = m[1].replace(/[\/.]/g, '-');
+        var nav = parseFloat(m[2]);
+        if (!isNaN(nav) && nav > 0) {
+          records.push({ code, name, date, nav, ts: Date.now() });
+        }
+      }
+    }
+
+    if (records.length === 0) {
+      showToast('❌ 未识别到有效数据，请检查格式（日期 净值）');
+      return;
+    }
+
+    var list = getNavHistory();
+    records.forEach(r => {
+      var existIdx = list.findIndex(item => item.code === r.code && item.date === r.date);
+      if (existIdx >= 0) {
+        list[existIdx] = r;
+      } else {
+        list.push(r);
+      }
+    });
+    saveNavHistory(list);
+
+    var sorted = records.sort((a, b) => a.date.localeCompare(b.date));
+    var latest = sorted[sorted.length - 1];
+    var f = state.find(x => x.code === code);
+    if (f) {
+      f.price = latest.nav;
+      f.priceDate = latest.date;
+      f._manualPrice = true;
+      save();
+      render();
+    }
+
+    currentPage = 0;
+    renderTable();
+    showToast('✅ 成功导入 ' + records.length + ' 条净值记录');
+    var batchPanel = box.querySelector('#batchPanel');
+    if (batchPanel) batchPanel.style.display = 'none';
+    if (activeTab < state.length && state[activeTab].code === code) {
+      setTimeout(function() {
+        drawNavChart(code, 'navChart-' + activeTab, '1M');
+      }, 100);
+    }
+  }
+
   box.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
       <div style="font-size:16px;font-weight:800;color:#00f0ff;letter-spacing:2px">📝 手动记录净值</div>
@@ -2742,6 +2852,16 @@ function showNavModal() {
         <input type="date" id="navDate" value="${new Date().toISOString().split('T')[0]}" style="background:rgba(0,0,0,0.4);border:1px solid rgba(0,240,255,0.3);border-radius:8px;padding:8px;color:#fff;font-size:13px;font-family:monospace">
         <input type="number" step="0.0001" id="navValue" placeholder="0.0000" style="background:rgba(0,0,0,0.4);border:1px solid rgba(0,240,255,0.3);border-radius:8px;padding:8px;color:#fff;font-size:13px;font-family:monospace;text-align:right">
         <button id="navAddBtn" style="background:linear-gradient(135deg,#00f0ff,#00b4d8);color:#05060b;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap">+ 添加</button>
+      </div>
+      <div style="margin-top:8px;text-align:right">
+        <button id="showBatchBtn" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:4px 12px;color:#93A3BD;font-size:11px;cursor:pointer">📥 批量导入</button>
+      </div>
+      <div id="batchPanel" style="display:none;margin-top:8px;">
+        <textarea id="batchInput" rows="6" style="width:100%;background:rgba(0,0,0,0.4);border:1px solid rgba(0,240,255,0.3);border-radius:8px;padding:8px;color:#fff;font-size:12px;font-family:monospace;box-sizing:border-box" placeholder="每行一条：日期 净值&#10;例：&#10;2025-09-02 1.0696&#10;2025-09-01 1.0831"></textarea>
+        <div style="display:flex;gap:8px;margin-top:6px;">
+          <button id="batchImportBtn" style="flex:1;padding:6px;background:linear-gradient(135deg,#00f0ff,#00b4d8);color:#05060b;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">确认导入</button>
+          <button id="batchCancelBtn" style="flex:1;padding:6px;background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.2);border-radius:6px;font-size:12px;cursor:pointer">取消</button>
+        </div>
       </div>
     </div>
     <div id="navTableBox"></div>
@@ -2794,6 +2914,28 @@ function showNavModal() {
         drawNavChart(code, 'navChart-' + activeTab, '1M');
       }, 100);
     }
+  };
+
+  var showBatchBtn = box.querySelector('#showBatchBtn');
+  var batchPanel = box.querySelector('#batchPanel');
+  showBatchBtn.onclick = function() {
+    if (batchPanel.style.display === 'none') {
+      batchPanel.style.display = 'block';
+      box.querySelector('#batchInput').focus();
+    } else {
+      batchPanel.style.display = 'none';
+    }
+  };
+  box.querySelector('#batchCancelBtn').onclick = function() {
+    batchPanel.style.display = 'none';
+  };
+  box.querySelector('#batchImportBtn').onclick = function() {
+    var text = box.querySelector('#batchInput').value;
+    if (!text.trim()) {
+      showToast('⚠️ 请输入数据');
+      return;
+    }
+    batchImportNav(text);
   };
 }
 
@@ -3014,8 +3156,7 @@ function saveNavHistory(list) {
   localStorage.setItem('nav_history', JSON.stringify(list));
 }
 
-// ==================== 绑定周期选择按钮事件（在 render 中调用） ====================
-// 在 render() 函数末尾，添加事件委托（由于动态生成，使用事件委托）
+// ==================== 绑定周期选择按钮事件（事件委托） ====================
 document.addEventListener('click', function(e) {
   var btn = e.target.closest('.chart-period');
   if (!btn) return;
@@ -3026,7 +3167,6 @@ document.addEventListener('click', function(e) {
   var idx = id.replace('navChart-', '');
   if (idx !== '' && state[parseInt(idx)]) {
     var code = state[parseInt(idx)].code;
-    // 更新按钮样式
     var siblings = btn.parentElement.querySelectorAll('.chart-period');
     siblings.forEach(b => {
       b.style.background = 'transparent';
