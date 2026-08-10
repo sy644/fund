@@ -2119,19 +2119,77 @@ document.getElementById('logoutBtn')?.addEventListener('click', logout);
 applyTheme();
 
 // ==================== 导出菜单 ====================
+// ==================== 导出菜单（修改版：选择类型 + 确认/取消） ====================
 function showExportMenu() {
-  showModal({
-    title: '导出数据',
-    message: '请选择要导出的内容：',
-    okText: '📊 导出收益表',
-    cancelText: '💾 导出 JSON 备份',
-  }).then(choice => {
-    if (choice === true) {
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)';
+
+  var box = document.createElement('div');
+  box.style.cssText = 'background:rgba(20,26,56,0.95);border:1.5px solid #00f0ff;border-radius:18px;padding:20px;min-width:280px;max-width:90vw;box-shadow:0 0 32px rgba(0,240,255,0.4);color:#fff;font-family:-apple-system,sans-serif';
+
+  box.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <div style="font-size:18px;font-weight:700;color:#00f0ff;text-shadow:0 0 8px rgba(0,240,255,0.5);letter-spacing:2px">📤 导出数据</div>
+      <button id="exportClose" style="background:transparent;border:none;color:#93A3BD;font-size:20px;cursor:pointer;line-height:1;padding:0 4px;">✕</button>
+    </div>
+    <div style="font-size:13px;color:#cbd5e1;text-align:center;margin-bottom:16px;">请选择要导出的内容：</div>
+    <div style="display:flex;gap:12px;margin-bottom:20px;">
+      <button id="exportTypeSheet" style="flex:1;padding:12px;background:rgba(0,240,255,0.1);border:2px solid rgba(0,240,255,0.3);border-radius:10px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s;">📊 收益表</button>
+      <button id="exportTypeJSON" style="flex:1;padding:12px;background:rgba(0,240,255,0.1);border:2px solid rgba(0,240,255,0.3);border-radius:10px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s;">💾 JSON</button>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button id="exportCancel" style="flex:1;padding:10px;background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.2);border-radius:10px;font-size:14px;font-weight:600;cursor:pointer">取消</button>
+      <button id="exportConfirm" style="flex:1;padding:10px;background:rgba(255,255,255,0.1);color:#93A3BD;border:1.5px solid rgba(255,255,255,0.15);border-radius:10px;font-size:14px;font-weight:700;cursor:not-allowed;opacity:0.6" disabled>确认</button>
+    </div>
+  `;
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+
+  var selectedType = null;
+  var sheetBtn = box.querySelector('#exportTypeSheet');
+  var jsonBtn = box.querySelector('#exportTypeJSON');
+  var confirmBtn = box.querySelector('#exportConfirm');
+  var cancelBtn = box.querySelector('#exportCancel');
+  var closeBtn = box.querySelector('#exportClose');
+
+  function selectType(type) {
+    selectedType = type;
+    sheetBtn.style.borderColor = type === 'sheet' ? '#00f0ff' : 'rgba(0,240,255,0.3)';
+    sheetBtn.style.background = type === 'sheet' ? 'rgba(0,240,255,0.25)' : 'rgba(0,240,255,0.1)';
+    jsonBtn.style.borderColor = type === 'json' ? '#00f0ff' : 'rgba(0,240,255,0.3)';
+    jsonBtn.style.background = type === 'json' ? 'rgba(0,240,255,0.25)' : 'rgba(0,240,255,0.1)';
+    confirmBtn.disabled = false;
+    confirmBtn.style.cursor = 'pointer';
+    confirmBtn.style.opacity = '1';
+    confirmBtn.style.background = 'linear-gradient(135deg,rgba(0,240,255,0.3),rgba(255,43,214,0.3))';
+    confirmBtn.style.color = '#fff';
+    confirmBtn.style.borderColor = '#00f0ff';
+  }
+
+  sheetBtn.onclick = function() { selectType('sheet'); };
+  jsonBtn.onclick = function() { selectType('json'); };
+
+  function closeAndDownload() {
+    document.body.removeChild(overlay);
+    if (selectedType === 'sheet') {
       saveData();
-    } else if (choice === false) {
+    } else if (selectedType === 'json') {
       exportJSONData();
     }
-  });
+  }
+
+  function closeOnly() {
+    document.body.removeChild(overlay);
+  }
+
+  confirmBtn.onclick = function() {
+    if (selectedType) closeAndDownload();
+  };
+
+  cancelBtn.onclick = closeOnly;
+  closeBtn.onclick = closeOnly;
+  overlay.onclick = function(e) { if (e.target === overlay) closeOnly(); };
 }
 
 function exportJSONData() {
@@ -2145,7 +2203,9 @@ function exportJSONData() {
   var url = URL.createObjectURL(blob);
   var a = document.createElement('a');
   a.href = url;
-  a.download = 'funds_backup_' + new Date().toISOString().split('T')[0] + '.json';
+  var d = new Date();
+  var shortDate = String(d.getFullYear()).slice(2) + '-' + (d.getMonth()+1) + '-' + d.getDate();
+  a.download = 'funds_backup_' + shortDate + '.json';
   a.click();
   URL.revokeObjectURL(url);
 }
