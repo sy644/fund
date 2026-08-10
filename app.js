@@ -1,4 +1,4 @@
-// === 完整 app.js（已修复导入和导出弹窗） ===
+// === 完整 app.js（含净值绘图、历史分页、导出修复） ===
 
 // 全局错误兜底
 window.addEventListener('error', e => {
@@ -49,6 +49,15 @@ try {
   if (el) el.innerHTML = '<pre style="color:red;padding:20px">STATE INIT ERROR: ' + e.message + '</pre>';
   console.error('STATE INIT ERROR:', e);
   throw e;
+}
+
+// 辅助：短日期格式
+function getShortDate() {
+  var d = new Date();
+  var y = String(d.getFullYear()).slice(2);
+  var m = String(d.getMonth() + 1);
+  var day = String(d.getDate());
+  return y + '-' + m + '-' + day;
 }
 
 // 净值抓取
@@ -445,6 +454,15 @@ function render() {
     activeTab = state.length > 0 ? state.length : 0;
   }
   updateTime();
+
+  // 绘制净值图（如果当前是基金详情页）
+  if (activeTab < state.length) {
+    var f = state[activeTab];
+    setTimeout(function() {
+      drawNavChart(f.code, 'navChart-' + activeTab);
+    }, 100);
+  }
+
   document.querySelectorAll(".range-track").forEach(updateRangeTrack);
 }
 
@@ -1490,7 +1508,7 @@ function updateCardValues(i) {
 }
 
 // =====================================================================
-//  renderFund
+//  renderFund（新增净值绘图 canvas）
 // =====================================================================
 function renderFund(f, i) {
   if (Array.isArray(f.buys)) {
@@ -1818,6 +1836,12 @@ function renderFund(f, i) {
         </div>
       </div>
 
+      <!-- 净值走势图 -->
+      <div class="chart-section" style="margin: 12px 0;">
+        <div class="section-title">📈 净值走势</div>
+        <canvas id="navChart-${i}" style="width:100%; height:180px;"></canvas>
+      </div>
+
       <div class="param-section">
         <div class="section-title">参数设置</div>
         <div class="param-grid-table">
@@ -1855,6 +1879,79 @@ function updateTime() {
   if (db) db.textContent = `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
   var el = document.getElementById('time');
   if (el) el.textContent = '';
+}
+
+// ==================== 净值绘图（支持 Chart.js 动态加载） ====================
+function drawNavChart(fundCode, canvasId) {
+  var canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+
+  // 如果 Chart 库未加载，动态加载并重试
+  if (typeof Chart === 'undefined') {
+    var script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
+    script.onload = function() { setTimeout(function() { drawNavChart(fundCode, canvasId); }, 100); };
+    document.head.appendChild(script);
+    return;
+  }
+
+  var navHistory = (function() {
+    try { return JSON.parse(localStorage.getItem('nav_history') || '[]'); }
+    catch(e) { return []; }
+  })();
+
+  var records = navHistory
+    .filter(r => r.code === fundCode)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  if (records.length < 2) {
+    canvas.parentElement.innerHTML = '<div style="text-align:center;color:#93A3BD;padding:12px;font-size:12px;">数据不足，无法绘图</div>';
+    return;
+  }
+
+  var labels = records.map(r => r.date.slice(5)); // MM-DD
+  var data = records.map(r => r.nav);
+
+  // 如果已存在 Chart 实例，销毁它
+  if (canvas._chart) {
+    canvas._chart.destroy();
+  }
+
+  var ctx = canvas.getContext('2d');
+  var chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: '净值',
+        data: data,
+        borderColor: '#00f0ff',
+        backgroundColor: 'rgba(0, 240, 255, 0.1)',
+        pointRadius: 2,
+        fill: true,
+        tension: 0.3
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#93A3BD', maxTicksLimit: 10 },
+          grid: { color: 'rgba(255,255,255,0.05)' }
+        },
+        y: {
+          ticks: { color: '#93A3BD' },
+          grid: { color: 'rgba(255,255,255,0.05)' }
+        }
+      }
+    }
+  });
+
+  canvas._chart = chart;
 }
 
 // ==================== 事件、导出、导入等 ====================
@@ -1974,7 +2071,7 @@ function saveAsExcel() {
   };
   var lines = [];
   lines.push(['基金加仓总览']);
-  lines.push(['导出时间', new Date().toISOString().split('T')[0]]);
+  lines.push(['导出时间', getShortDate()]);
   lines.push([]);
   lines.push(['总投入', totalInv.toFixed(2), '总市值', totalVal.toFixed(2), '总收益', totalPnl.toFixed(2), '总收益率', totalRate.toFixed(2)+'%', '完成度', (totalInv/totalTgt*100).toFixed(1)+'%']);
   lines.push([]);
@@ -2014,8 +2111,7 @@ function saveAsExcel() {
     });
   });
   var csv = '\uFEFF' + lines.map(row => row.map(esc).join(',')).join('\r\n');
-  var ts = new Date().toISOString().split('T')[0];
-  var filename = '基金加仓总览_' + ts + '.csv';
+  var filename = '基金加仓总览_' + getShortDate() + '.csv';
 
   function downloadFile(text, name, mime) {
     try {
@@ -2066,14 +2162,13 @@ function saveAsExcel() {
   }
 }
 
-// ==================== 导入（已修复） ====================
+// ==================== 导入（修复版） ====================
 function importData(file) {
   showToast('⏳ 正在导入数据...');
   var reader = new FileReader();
   reader.onload = e => {
     try {
       var data = JSON.parse(e.target.result);
-      // 支持两种格式：{ funds, nav_history } 或纯数组
       if (data.funds && Array.isArray(data.funds)) {
         state = data.funds;
         if (data.nav_history) {
@@ -2097,29 +2192,7 @@ function importData(file) {
   reader.readAsText(file);
 }
 
-// 主题切换
-var THEME_CYCLE = ['cyber', 'dark', 'light'];
-var THEME_ICON = { cyber: '🌃', dark: '🌙', light: '☀️' };
-var theme = localStorage.getItem('theme') || 'cyber';
-if (!THEME_CYCLE.includes(theme)) theme = 'cyber';
-function applyTheme() {
-  document.documentElement.setAttribute('data-theme', theme);
-  var btn = document.getElementById('themeBtn');
-  if (btn) btn.textContent = THEME_ICON[theme] || '🌃';
-}
-function toggleTheme() {
-  var idx = THEME_CYCLE.indexOf(theme);
-  theme = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length];
-  localStorage.setItem('theme', theme);
-  applyTheme();
-}
-function logout() { location.reload(); }
-document.getElementById('themeBtn')?.addEventListener('click', toggleTheme);
-document.getElementById('logoutBtn')?.addEventListener('click', logout);
-applyTheme();
-
-// ==================== 导出菜单 ====================
-// ==================== 导出菜单（修改版：选择类型 + 确认/取消） ====================
+// ==================== 导出菜单（新版） ====================
 function showExportMenu() {
   var overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)';
@@ -2192,6 +2265,7 @@ function showExportMenu() {
   overlay.onclick = function(e) { if (e.target === overlay) closeOnly(); };
 }
 
+// ==================== 导出 JSON ====================
 function exportJSONData() {
   var data = {
     funds: state,
@@ -2203,14 +2277,33 @@ function exportJSONData() {
   var url = URL.createObjectURL(blob);
   var a = document.createElement('a');
   a.href = url;
-  var d = new Date();
-  var shortDate = String(d.getFullYear()).slice(2) + '-' + (d.getMonth()+1) + '-' + d.getDate();
-  a.download = 'funds_backup_' + shortDate + '.json';
+  a.download = 'funds_backup_' + getShortDate() + '.json';
   a.click();
   URL.revokeObjectURL(url);
 }
 
-// ==================== 新增基金 ====================
+// ==================== 主题切换 ====================
+var THEME_CYCLE = ['cyber', 'dark', 'light'];
+var THEME_ICON = { cyber: '🌃', dark: '🌙', light: '☀️' };
+var theme = localStorage.getItem('theme') || 'cyber';
+if (!THEME_CYCLE.includes(theme)) theme = 'cyber';
+function applyTheme() {
+  document.documentElement.setAttribute('data-theme', theme);
+  var btn = document.getElementById('themeBtn');
+  if (btn) btn.textContent = THEME_ICON[theme] || '🌃';
+}
+function toggleTheme() {
+  var idx = THEME_CYCLE.indexOf(theme);
+  theme = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length];
+  localStorage.setItem('theme', theme);
+  applyTheme();
+}
+function logout() { location.reload(); }
+document.getElementById('themeBtn')?.addEventListener('click', toggleTheme);
+document.getElementById('logoutBtn')?.addEventListener('click', logout);
+applyTheme();
+
+// ==================== 新增/删除基金 ====================
 async function addNewFund() {
   var name = await showModal({ input: 'text', message: '基金名称 (如: 白酒/医药/新能源):', default: '新基金' });
   if (!name || name === '取消') return;
@@ -2314,7 +2407,7 @@ function smartBday(dateStr, timeStr) {
   }
 }
 
-// ============== OCR ==============
+// ============== OCR 相关 ==============
 var ocrWorker = null;
 async function loadTesseractLib() {
   if (window.Tesseract) return;
@@ -2382,7 +2475,7 @@ function showOCRConfirmDialog(f, i, records) {
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:99999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)';
   var box = document.createElement('div');
   box.style.cssText = 'background:linear-gradient(135deg, rgba(20,26,56,0.98), rgba(10,16,36,0.98));border:1.5px solid #00f0ff;border-radius:16px;padding:18px;min-width:320px;max-width:90vw;max-height:80vh;overflow-y:auto;box-shadow:0 0 24px rgba(0,240,255,0.4);color:#fff;font-family:-apple-system,sans-serif';
-  
+
   var rowsHtml = records.map((r, idx) => {
     var bdayChanged = r.bday !== r.date;
     var isSell = r.type === 'sell';
@@ -2398,7 +2491,7 @@ function showOCRConfirmDialog(f, i, records) {
       <span style="font-size:10px;color:${bdayChanged ? '#fbbf24' : '#475569'}">${bdayChanged ? '顺延' : '当天'}</span>
     </div>`;
   }).join('');
-  
+
   box.innerHTML = `
     <div style="font-size:15px;font-weight:800;color:#00f0ff;letter-spacing:1px;margin-bottom:12px;text-shadow:0 0 8px rgba(0,240,255,0.5)">📷 识别到 ${records.length} 条</div>
     <div style="font-size:11px;color:#93A3BD;margin-bottom:10px">智能日期: 9:30-15:00 之内=当天, 之外=顺延到下个交易日</div>
@@ -2518,6 +2611,7 @@ function showAddNavDialog(code, name, date) {
   overlay.onclick = (e) => { if (e.target === overlay) close(); };
 }
 
+// ============== 净值历史弹窗（带分页） ==============
 function showNavModal() {
   var old = document.getElementById('navModal');
   if (old) old.remove();
@@ -2526,36 +2620,84 @@ function showNavModal() {
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:99999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);padding:12px';
   var box = document.createElement('div');
   box.style.cssText = 'background:linear-gradient(135deg, rgba(20,26,56,0.98), rgba(10,16,36,0.98));border:1.5px solid #00f0ff;border-radius:18px;padding:18px;width:100%;max-width:480px;max-height:85vh;overflow-y:auto;box-shadow:0 0 32px rgba(0,240,255,0.4);color:#fff;font-family:-apple-system,sans-serif';
+
+  var currentPage = 0;
+  var pageSize = 20;
+  var navList = [];
+
   function fundOptions(selectedCode) {
     return state.map(f =>
       `<option value="${f.code}" data-name="${f.name}" ${f.code === selectedCode ? 'selected' : ''}>${f.name} (${f.code})</option>`
     ).join('');
   }
+
   function renderTable() {
-    var list = getNavHistory().slice().reverse();
-    if (list.length === 0) {
-      return '<div style="text-align:center;color:#93A3BD;padding:20px;font-size:12px">还没有记录 · 填写下方表单添加</div>';
+    navList = getNavHistory().slice().reverse(); // 最新在前
+    var totalPages = Math.ceil(navList.length / pageSize) || 1;
+    if (currentPage >= totalPages) currentPage = Math.max(0, totalPages - 1);
+    var start = currentPage * pageSize;
+    var end = Math.min(start + pageSize, navList.length);
+    var pageData = navList.slice(start, end);
+
+    var tableBox = box.querySelector('#navTableBox');
+    if (!tableBox) return;
+
+    if (navList.length === 0) {
+      tableBox.innerHTML = '<div style="text-align:center;color:#93A3BD;padding:20px;font-size:12px">还没有记录 · 填写下方表单添加</div>';
+      return;
     }
-    return `<table style="width:100%;border-collapse:collapse;font-size:12px">
+
+    var html = `<table style="width:100%;border-collapse:collapse;font-size:12px">
       <thead><tr style="background:rgba(0,240,255,0.15)">
         <th style="padding:6px;text-align:left">基金</th>
         <th style="padding:6px;text-align:left">日期</th>
         <th style="padding:6px;text-align:right">净值</th>
         <th style="padding:6px;width:36px"></th>
       </tr></thead>
-      <tbody>
-        ${list.map((r, i) => {
-          var realIdx = list.length - 1 - i;
-          return `<tr style="border-top:1px solid rgba(0,240,255,0.1)">
-            <td style="padding:6px">${r.name} <span style="color:#93A3BD;font-size:10px">${r.code}</span></td>
-            <td style="padding:6px;color:#93A3BD;font-family:monospace">${r.date}</td>
-            <td style="padding:6px;text-align:right;font-weight:700;color:#00f5c8;font-family:monospace">${r.nav.toFixed(4)}</td>
-            <td style="padding:6px;text-align:center"><button data-del-idx="${realIdx}" style="background:transparent;border:none;color:#ff5fa0;cursor:pointer;font-size:14px">✕</button></td>
-          </tr>`;
-        }).join('')}
-      </tbody>
-    </table>`;
+      <tbody>`;
+    pageData.forEach((r, idx) => {
+      var realIdx = navList.length - 1 - (start + idx);
+      html += `<tr style="border-top:1px solid rgba(0,240,255,0.1)">
+        <td style="padding:6px">${r.name} <span style="color:#93A3BD;font-size:10px">${r.code}</span></td>
+        <td style="padding:6px;color:#93A3BD;font-family:monospace">${r.date}</td>
+        <td style="padding:6px;text-align:right;font-weight:700;color:#00f5c8;font-family:monospace">${r.nav.toFixed(4)}</td>
+        <td style="padding:6px;text-align:center"><button data-del-idx="${realIdx}" style="background:transparent;border:none;color:#ff5fa0;cursor:pointer;font-size:14px">✕</button></td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+
+    if (totalPages > 1) {
+      html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:12px;color:#93A3BD">
+        <button id="navPrevPage" style="background:rgba(0,240,255,0.1);border:1px solid rgba(0,240,255,0.3);border-radius:6px;padding:4px 12px;color:#fff;cursor:pointer" ${currentPage===0?'disabled':''}>◀ 上一页</button>
+        <span>第 ${currentPage+1} / ${totalPages} 页</span>
+        <button id="navNextPage" style="background:rgba(0,240,255,0.1);border:1px solid rgba(0,240,255,0.3);border-radius:6px;padding:4px 12px;color:#fff;cursor:pointer" ${currentPage>=totalPages-1?'disabled':''}>下一页 ▶</button>
+      </div>`;
+    }
+
+    tableBox.innerHTML = html;
+    bindDelete();
+
+    var prevBtn = tableBox.querySelector('#navPrevPage');
+    var nextBtn = tableBox.querySelector('#navNextPage');
+    if (prevBtn) prevBtn.onclick = function() { if (currentPage > 0) { currentPage--; renderTable(); } };
+    if (nextBtn) nextBtn.onclick = function() { if (currentPage < totalPages-1) { currentPage++; renderTable(); } };
   }
+
+  function bindDelete() {
+    box.querySelectorAll('[data-del-idx]').forEach(btn => {
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        var idx = parseInt(this.dataset.delIdx, 10);
+        var list = getNavHistory();
+        if (idx >= 0 && idx < list.length) {
+          list.splice(idx, 1);
+          saveNavHistory(list);
+          renderTable();
+        }
+      };
+    });
+  }
+
   box.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
       <div style="font-size:16px;font-weight:800;color:#00f0ff;letter-spacing:2px">📝 手动记录净值</div>
@@ -2571,17 +2713,22 @@ function showNavModal() {
         <button id="navAddBtn" style="background:linear-gradient(135deg,#00f0ff,#00b4d8);color:#05060b;border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap">+ 添加</button>
       </div>
     </div>
-    <div id="navTableBox">
-      ${renderTable()}
-    </div>
+    <div id="navTableBox"></div>
     <div style="margin-top:12px;text-align:center;font-size:10px;color:#93A3BD">记录保存到 localStorage · 用于手动追踪净值变化</div>
   `;
+
   overlay.appendChild(box);
   document.body.appendChild(overlay);
+
   function close() { overlay.remove(); }
   box.querySelector('#navClose').onclick = close;
   overlay.onclick = (e) => { if (e.target === overlay) close(); };
-  box.querySelector('#navAddBtn').onclick = () => {
+
+  // 首次渲染表格
+  renderTable();
+
+  // 添加记录
+  box.querySelector('#navAddBtn').onclick = function() {
     var sel = box.querySelector('#navFundSelect');
     var dateInp = box.querySelector('#navDate');
     var valInp = box.querySelector('#navValue');
@@ -2595,8 +2742,15 @@ function showNavModal() {
       return;
     }
     var list = getNavHistory();
-    list.push({ code, name, date, nav, ts: Date.now() });
+    // 检查是否已存在，若存在则覆盖
+    var existIdx = list.findIndex(r => r.code === code && r.date === date);
+    if (existIdx >= 0) {
+      list[existIdx] = { code, name, date, nav, ts: Date.now() };
+    } else {
+      list.push({ code, name, date, nav, ts: Date.now() });
+    }
     saveNavHistory(list);
+    // 更新当前基金价格
     var f = state.find(x => x.code === code);
     if (f) {
       f.price = nav;
@@ -2605,26 +2759,20 @@ function showNavModal() {
       save();
       render();
     }
-    box.querySelector('#navTableBox').innerHTML = renderTable();
-    bindDelete();
+    // 重置分页到第一页，刷新表格
+    currentPage = 0;
+    renderTable();
     valInp.value = '';
+    // 如果当前显示的是该基金，重新绘制图表
+    if (activeTab < state.length && state[activeTab].code === code) {
+      setTimeout(function() {
+        drawNavChart(code, 'navChart-' + activeTab);
+      }, 100);
+    }
   };
-  function bindDelete() {
-    box.querySelectorAll('[data-del-idx]').forEach(btn => {
-      btn.onclick = () => {
-        var idx = parseInt(btn.dataset.delIdx, 10);
-        var list = getNavHistory();
-        list.splice(idx, 1);
-        saveNavHistory(list);
-        box.querySelector('#navTableBox').innerHTML = renderTable();
-        bindDelete();
-      };
-    });
-  }
-  bindDelete();
 }
 
-// ==================== 自定义 Modal（已增加关闭按钮） ====================
+// ==================== 自定义 Modal（带关闭按钮） ====================
 var SONG_CI = [
   '春风又绿江南岸', '人生若只如初见', '明月几时有', '小楼昨夜又东风',
   '落花人独立', '碧云天，黄叶地', '一蓑烟雨任平生', '何妨吟啸且徐行',
