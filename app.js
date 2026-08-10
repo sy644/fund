@@ -1,4 +1,4 @@
-// === 完整 app.js（含增强净值图表） ===
+// === 完整 app.js（整合：交易OCR + 净值OCR + 图表周期 + 导入/导出 + 分页） ===
 
 // 全局错误兜底
 window.addEventListener('error', e => {
@@ -455,11 +455,11 @@ function render() {
   }
   updateTime();
 
-  // 绘制净值图（传入 buys）
+  // 绘制净值图（如果当前是基金详情页）
   if (activeTab < state.length) {
     var f = state[activeTab];
     setTimeout(function() {
-      drawNavChart(f.code, 'navChart-' + activeTab, '1M', f.buys);
+      drawNavChart(f.code, 'navChart-' + activeTab, '1M');
     }, 100);
   }
 
@@ -1854,7 +1854,7 @@ function renderFund(f, i) {
       </div>
 
       <!-- 净值走势图（带周期选择） -->
-      <<div class="chart-section" style="margin: 12px 0; height: 260px; max-height: 260px; overflow: hidden; min-height: 260px;">
+      <div class="chart-section" style="margin: 12px 0; height: 180px; max-height: 200px; overflow: hidden;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
           <span class="section-title" style="font-size:14px;">📈 净值走势</span>
           <div style="display:flex; gap:6px; font-size:11px;">
@@ -1905,16 +1905,15 @@ function updateTime() {
   if (el) el.textContent = '';
 }
 
-// ==================== 增强净值绘图（含买卖标记、高低点标记、悬停提示、统计摘要） ====================
-
-      function drawNavChart(fundCode, canvasId, period, buys) {
+// ==================== 净值绘图（支持周期选择） ====================
+function drawNavChart(fundCode, canvasId, period) {
   var canvas = document.getElementById(canvasId);
   if (!canvas) return;
 
   if (typeof Chart === 'undefined') {
     var script = document.createElement('script');
     script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
-    script.onload = function() { setTimeout(function() { drawNavChart(fundCode, canvasId, period || '1M', buys); }, 100); };
+    script.onload = function() { setTimeout(function() { drawNavChart(fundCode, canvasId, period || '1M'); }, 100); };
     document.head.appendChild(script);
     return;
   }
@@ -1950,84 +1949,6 @@ function updateTime() {
   var labels = filtered.map(r => r.date.slice(5));
   var data = filtered.map(r => r.nav);
 
-  var buyPoints = [];
-  var sellPoints = [];
-  if (buys && buys.length) {
-    buys.forEach(b => {
-      var date = b.date;
-      var match = filtered.find(r => r.date === date);
-      if (!match) return;
-      var idx = filtered.indexOf(match);
-      var point = { x: labels[idx], y: match.nav, amount: b.amount, shares: b._shares || 0, type: b.type };
-      if (b.type === 'buy' || b.amount > 0) {
-        buyPoints.push(point);
-      } else {
-        sellPoints.push(point);
-      }
-    });
-  }
-
-  var maxNav = Math.max(...data);
-  var minNav = Math.min(...data);
-  var maxIdx = data.indexOf(maxNav);
-  var minIdx = data.indexOf(minNav);
-  var highPoint = { x: labels[maxIdx], y: maxNav };
-  var lowPoint = { x: labels[minIdx], y: minNav };
-
-  var datasets = [
-    {
-      label: '净值',
-      data: data,
-      borderColor: '#00f0ff',
-      backgroundColor: 'rgba(0, 240, 255, 0.1)',
-      pointRadius: 2,
-      fill: true,
-      tension: 0.3,
-    }
-  ];
-
-  if (buyPoints.length) {
-    datasets.push({
-      label: '买入',
-      data: buyPoints.map(p => ({ x: p.x, y: p.y })),
-      borderColor: '#22c55e',
-      backgroundColor: '#22c55e',
-      pointRadius: 6,
-      pointStyle: 'triangle',
-      showLine: false,
-    });
-  }
-  if (sellPoints.length) {
-    datasets.push({
-      label: '卖出',
-      data: sellPoints.map(p => ({ x: p.x, y: p.y })),
-      borderColor: '#ef4444',
-      backgroundColor: '#ef4444',
-      pointRadius: 6,
-      pointStyle: 'triangle',
-      rotation: 180,
-      showLine: false,
-    });
-  }
-  datasets.push({
-    label: '高点',
-    data: [{ x: highPoint.x, y: highPoint.y }],
-    borderColor: '#fbbf24',
-    backgroundColor: '#fbbf24',
-    pointRadius: 10,
-    pointStyle: 'star',
-    showLine: false,
-  });
-  datasets.push({
-    label: '低点',
-    data: [{ x: lowPoint.x, y: lowPoint.y }],
-    borderColor: '#3b82f6',
-    backgroundColor: '#3b82f6',
-    pointRadius: 10,
-    pointStyle: 'star',
-    showLine: false,
-  });
-
   if (canvas._chart) canvas._chart.destroy();
 
   canvas.style.height = '100%';
@@ -2038,102 +1959,30 @@ function updateTime() {
     type: 'line',
     data: {
       labels: labels,
-      datasets: datasets
+      datasets: [{
+        label: '净值',
+        data: data,
+        borderColor: '#00f0ff',
+        backgroundColor: 'rgba(0, 240, 255, 0.1)',
+        pointRadius: 2,
+        fill: true,
+        tension: 0.3
+      }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      layout: {
-        padding: {
-          top: 10,
-          bottom: 10,
-          left: 5,
-          right: 5
-        }
-      },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: function(context) {
-              var label = context.dataset.label || '';
-              var value = context.parsed.y;
-              if (context.datasetIndex === 0) {
-                return '净值: ' + value.toFixed(4);
-              } else if (context.datasetIndex === 1) {
-                var buyInfo = buyPoints[context.dataIndex];
-                if (buyInfo) return '买入: ' + Math.round(buyInfo.amount) + '元 份额: ' + buyInfo.shares.toFixed(2);
-                return '买入';
-              } else if (context.datasetIndex === 2) {
-                var sellInfo = sellPoints[context.dataIndex];
-                if (sellInfo) return '卖出: ' + Math.round(Math.abs(sellInfo.amount)) + '元 份额: ' + Math.abs(sellInfo.shares).toFixed(2);
-                return '卖出';
-              } else if (context.datasetIndex === 3) {
-                return '高点: ' + value.toFixed(4);
-              } else if (context.datasetIndex === 4) {
-                return '低点: ' + value.toFixed(4);
-              }
-              return label + ': ' + value.toFixed(4);
-            }
-          }
-        }
-      },
+      plugins: { legend: { display: false } },
       scales: {
-        x: {
-          ticks: { 
-            color: '#93A3BD', 
-            maxTicksLimit: 10,
-            maxRotation: -30,
-            minRotation: -30
-          },
-          grid: { color: 'rgba(255,255,255,0.05)' }
-        },
-        y: {
-          ticks: { color: '#93A3BD' },
-          grid: { color: 'rgba(255,255,255,0.05)' }
-        }
+        x: { ticks: { color: '#93A3BD', maxTicksLimit: 10 }, grid: { color: 'rgba(255,255,255,0.05)' } },
+        y: { ticks: { color: '#93A3BD' }, grid: { color: 'rgba(255,255,255,0.05)' } }
       }
     }
   });
 
   canvas._chart = chart;
-
-  setTimeout(function() {
-    chart.resize();
-  }, 50);
-
-  var container = canvas.parentElement;
-  var summaryDiv = container.querySelector('.chart-summary');
-  if (!summaryDiv) {
-    summaryDiv = document.createElement('div');
-    summaryDiv.className = 'chart-summary';
-    summaryDiv.style.cssText = `
-      display: flex;
-      justify-content: space-around;
-      padding: 2px 0 4px 0;
-      font-size: 10px;
-      color: #93A3BD;
-      border-bottom: 1px solid rgba(255,255,255,0.05);
-      flex-wrap: nowrap;
-      gap: 2px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    `;
-    container.insertBefore(summaryDiv, canvas);
-  }
-  var latest = data[data.length-1];
-  var high = maxNav;
-  var low = minNav;
-  var highLowPct = (high - low) / low * 100;
-  var drawdown = (latest - high) / high * 100;
-  summaryDiv.innerHTML = `
-    <span>最高 ${high.toFixed(4)}</span>
-    <span>最低 ${low.toFixed(4)}</span>
-    <span>振幅 ${highLowPct.toFixed(2)}%</span>
-    <span>距高点 ${drawdown.toFixed(2)}%</span>
-  `;
 }
+
 // ==================== 事件、导出、导入等 ====================
 window.addEventListener('focus', () => {
   var saved = localStorage.getItem('funds');
@@ -2736,7 +2585,7 @@ function showOCRConfirmDialog(f, i, records, text, mode) {
       document.body.removeChild(overlay);
       showToast('✅ 已导入 ' + added + ' 条净值记录');
       setTimeout(function() {
-        drawNavChart(f.code, 'navChart-' + i, '1M', f.buys);
+        drawNavChart(f.code, 'navChart-' + i, '1M');
       }, 100);
     } else {
       var prev = JSON.stringify(state);
@@ -2985,7 +2834,7 @@ function showNavModal() {
     if (batchPanel) batchPanel.style.display = 'none';
     if (activeTab < state.length && state[activeTab].code === code) {
       setTimeout(function() {
-        drawNavChart(code, 'navChart-' + activeTab, '1M', state[activeTab].buys);
+        drawNavChart(code, 'navChart-' + activeTab, '1M');
       }, 100);
     }
   }
@@ -3062,7 +2911,7 @@ function showNavModal() {
     valInp.value = '';
     if (activeTab < state.length && state[activeTab].code === code) {
       setTimeout(function() {
-        drawNavChart(code, 'navChart-' + activeTab, '1M', state[activeTab].buys);
+        drawNavChart(code, 'navChart-' + activeTab, '1M');
       }, 100);
     }
   };
@@ -3317,7 +3166,7 @@ document.addEventListener('click', function(e) {
   var id = canvas.id;
   var idx = id.replace('navChart-', '');
   if (idx !== '' && state[parseInt(idx)]) {
-    var f = state[parseInt(idx)];
+    var code = state[parseInt(idx)].code;
     var siblings = btn.parentElement.querySelectorAll('.chart-period');
     siblings.forEach(b => {
       b.style.background = 'transparent';
@@ -3327,6 +3176,6 @@ document.addEventListener('click', function(e) {
     btn.style.background = 'rgba(0,240,255,0.2)';
     btn.style.borderColor = '#00f0ff';
     btn.style.color = '#fff';
-    drawNavChart(f.code, id, period, f.buys);
+    drawNavChart(code, id, period);
   }
 });
