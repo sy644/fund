@@ -1,7 +1,6 @@
-// === 完整 app.js（已清理冗余代码） ===
-// 删除：saveDebounced, exportExcelToFile, resetData 及无效按钮绑定
+// === 完整 app.js（已修复导入和导出弹窗） ===
 
-// 全局错误兜底 - 避免黑屏静默失败
+// 全局错误兜底
 window.addEventListener('error', e => {
   console.error('[FUND ERROR]', e.error || e.message);
   var el = document.getElementById('funds') || document.body;
@@ -18,7 +17,7 @@ window.addEventListener('error', e => {
   }
 });
 
-// 兜底: data.js 未提供 FUNDS_INIT 时用空数组
+// 兜底
 if (typeof DEFAULT_INIT === 'undefined') { var DEFAULT_INIT = []; }
 var state;
 try {
@@ -298,7 +297,7 @@ function render() {
   if (activeTab < state.length) html += renderFund(state[activeTab], activeTab);
   else html += renderSummary();
   html += '</div>';
-  // 底部 dock: 只保留 ✍ (单击刷新/双击记录) 和 汇总/基金/+
+  // 底部 dock
   html += '<div class="dock-bar">';
   html += '<button class="dock-icon-only" id="refreshBtn" title="单击刷新·双击记录">✍</button>';
   html += '<span class="dock-sep"></span>';
@@ -308,7 +307,7 @@ function render() {
   });
   html += '<button class="tab-add" data-add="1" title="新增基金">+</button>';
   html += '</div>';
-  // 滚轮选择器容器
+  // 滚轮选择器
   html += '<div class="wheel-mask" id="wheelMask">';
   html += '  <div class="wheel-sheet">';
   html += '    <div class="wheel-header">';
@@ -336,7 +335,6 @@ function render() {
 
   document.querySelector('.tab-add[data-add="1"]')?.addEventListener('click', addNewFund);
 
-  // refreshBtn：单击刷新，双击进入记录页
   let refreshClickTimer = null;
   document.getElementById('refreshBtn')?.addEventListener('click', function(e) {
     if (refreshClickTimer) {
@@ -351,7 +349,6 @@ function render() {
     }, 300);
   });
 
-  // 绑定汇总页的导出/导入按钮
   document.getElementById('summaryExportBtn')?.addEventListener('click', showExportMenu);
   document.getElementById('summaryImportBtn')?.addEventListener('click', function() {
     var input = document.getElementById('importFileInput');
@@ -451,7 +448,7 @@ function render() {
   document.querySelectorAll(".range-track").forEach(updateRangeTrack);
 }
 
-// ==================== 跑道 + 跑步小人 ====================
+// ==================== 跑道 ====================
 function updateRangeTrack(track) {
   var low = parseFloat(track.dataset.low) || 0;
   var mid = parseFloat(track.dataset.mid) || 0;
@@ -725,7 +722,7 @@ if (document.readyState === 'loading') {
 }
 
 // =====================================================================
-//  修改点 1：改进 OCR 解析（卖出识别、金额提取）
+//  OCR 解析
 // =====================================================================
 function parseBuyRecords(text) {
   var lines = text.split(/\n+/).map(l => l.trim()).filter(Boolean);
@@ -775,7 +772,7 @@ function parseBuyRecords(text) {
 }
 
 // =====================================================================
-//  修改点 2：交易行绑定 – 买入金额可编辑，卖出份额可编辑
+//  交易绑定
 // =====================================================================
 function bindFundEvents(f, i) {
   var priceIn = document.getElementById(`price-${i}`);
@@ -1076,7 +1073,7 @@ function bindFundEvents(f, i) {
       calcRowStyle();
     }
 
-    // 买入金额 input（可编辑）→ 自动计算份额
+    // 买入金额 input
     if (amtInp) {
       amtInp.addEventListener('input', function(e) {
         var v = parseFloat(e.target.value) || 0;
@@ -1103,7 +1100,7 @@ function bindFundEvents(f, i) {
       });
     }
 
-    // 卖出份额 input（可编辑）→ 自动计算金额（负值）
+    // 卖出份额 input
     if (shareInp) {
       shareInp.addEventListener('input', function(e) {
         var sh = parseFloat(e.target.value) || 0;
@@ -1239,7 +1236,7 @@ function bindFundEvents(f, i) {
 
 function bindSummaryEvents() {}
 
-// ==================== 修改汇总页：顶部添加导出/导入按钮 ====================
+// ==================== 汇总页 ====================
 function renderSummary() {
   var html = '<div class="fund" style="border-top: 4px solid #FFD700">';
   html += '<div class="summary-title" style="display:flex;justify-content:space-between;align-items:center;">';
@@ -1493,7 +1490,7 @@ function updateCardValues(i) {
 }
 
 // =====================================================================
-//  修改点 3：renderFund – 交易行根据买卖类型显示不同可编辑字段
+//  renderFund
 // =====================================================================
 function renderFund(f, i) {
   if (Array.isArray(f.buys)) {
@@ -1544,7 +1541,6 @@ function renderFund(f, i) {
   var prog = invested / f.target;
   var tierRows = buildTierTable(f);
 
-  // ---- 构建交易行 HTML ----
   var buyRowsHtml = f.buys.map((b, bi) => {
     var realAmt = b.amount || 0;
     var isSell = (b.amount < 0) || (b.type === 'sell');
@@ -1619,7 +1615,6 @@ function renderFund(f, i) {
     `;
   }).join('');
 
-  // ---- 继续原有页面结构 ----
   return `
     <div class="fund" style="border-top: 4px solid ${f.color}">
       <div class="fund-head">
@@ -1862,7 +1857,7 @@ function updateTime() {
   if (el) el.textContent = '';
 }
 
-// ==================== 第 3 部分：事件监听、导出、主题、OCR、弹窗等 ====================
+// ==================== 事件、导出、导入等 ====================
 window.addEventListener('focus', () => {
   var saved = localStorage.getItem('funds');
   if (saved) {
@@ -1901,6 +1896,7 @@ function startAutoRefresh() {
   autoRefreshTimer = setInterval(refreshAll, 5 * 60 * 1000);
 }
 
+// ==================== 导出收益表 ====================
 function saveData() {
   var totalInv = 0, totalVal = 0, totalPnl = 0, totalShares = 0, totalTarget = 0;
   var rows = state.map(f => {
@@ -1917,7 +1913,6 @@ function saveData() {
   var totalProg = totalTarget > 0 ? (totalInv / totalTarget * 100) : 0;
   var pnlColor = (v) => v >= 0 ? '#dc2626' : '#16a34a';
   var pnlSign = (v) => v >= 0 ? '+' : '';
-  var today = new Date().toISOString().split('T')[0];
 
   var summaryHtml = `
     <div style="background:rgba(0,0,0,0.3);border-radius:8px;padding:10px;margin-bottom:10px">
@@ -2071,18 +2066,33 @@ function saveAsExcel() {
   }
 }
 
+// ==================== 导入（已修复） ====================
 function importData(file) {
+  showToast('⏳ 正在导入数据...');
   var reader = new FileReader();
   reader.onload = e => {
     try {
       var data = JSON.parse(e.target.result);
-      if (Array.isArray(data) && data.length > 0) {
+      // 支持两种格式：{ funds, nav_history } 或纯数组
+      if (data.funds && Array.isArray(data.funds)) {
+        state = data.funds;
+        if (data.nav_history) {
+          localStorage.setItem('nav_history', JSON.stringify(data.nav_history));
+        }
+        save();
+        render();
+        showToast('✅ 数据导入成功！');
+      } else if (Array.isArray(data) && data.length > 0) {
         state = data;
         save();
         render();
-        alert('数据已恢复');
-      } else { alert('文件格式错误'); }
-    } catch(err) { alert('解析失败: ' + err.message); }
+        showToast('✅ 数据导入成功！');
+      } else {
+        showToast('❌ 文件格式错误');
+      }
+    } catch(err) {
+      showToast('❌ 解析失败: ' + err.message);
+    }
   };
   reader.readAsText(file);
 }
@@ -2108,7 +2118,7 @@ document.getElementById('themeBtn')?.addEventListener('click', toggleTheme);
 document.getElementById('logoutBtn')?.addEventListener('click', logout);
 applyTheme();
 
-// ============ 导出菜单：供汇总页导出按钮调用 ============
+// ==================== 导出菜单 ====================
 function showExportMenu() {
   showModal({
     title: '导出数据',
@@ -2117,7 +2127,7 @@ function showExportMenu() {
     cancelText: '💾 导出 JSON 备份',
   }).then(choice => {
     if (choice === true) {
-      saveData(); // 原有的收益表导出
+      saveData();
     } else if (choice === false) {
       exportJSONData();
     }
@@ -2140,6 +2150,7 @@ function exportJSONData() {
   URL.revokeObjectURL(url);
 }
 
+// ==================== 新增基金 ====================
 async function addNewFund() {
   var name = await showModal({ input: 'text', message: '基金名称 (如: 白酒/医药/新能源):', default: '新基金' });
   if (!name || name === '取消') return;
@@ -2182,7 +2193,7 @@ function deleteFund(idx) {
   updateSaveBadge();
 }
 
-// ============== 多年度动态假期列表 ==============
+// ============== 假期、交易日 ==============
 var HOLIDAYS_MAP = {
   '2026': [
     '2026-01-01','2026-01-02',
@@ -2243,7 +2254,7 @@ function smartBday(dateStr, timeStr) {
   }
 }
 
-// ============== OCR 识别交易记录 ==============
+// ============== OCR ==============
 var ocrWorker = null;
 async function loadTesseractLib() {
   if (window.Tesseract) return;
@@ -2553,7 +2564,7 @@ function showNavModal() {
   bindDelete();
 }
 
-// 自定义 modal
+// ==================== 自定义 Modal（已增加关闭按钮） ====================
 var SONG_CI = [
   '春风又绿江南岸', '人生若只如初见', '明月几时有', '小楼昨夜又东风',
   '落花人独立', '碧云天，黄叶地', '一蓑烟雨任平生', '何妨吟啸且徐行',
@@ -2579,7 +2590,10 @@ function showModal(opts) {
     var box = document.createElement('div');
     box.style.cssText = 'background:rgba(20,26,56,0.95);border:1.5px solid #00f0ff;border-radius:18px;padding:20px;min-width:280px;max-width:90vw;box-shadow:0 0 32px rgba(0,240,255,0.4);color:#fff;font-family:-apple-system,sans-serif';
     box.innerHTML = `
-      <div style="font-size:18px;font-weight:700;color:#00f0ff;text-align:center;margin-bottom:8px;text-shadow:0 0 8px rgba(0,240,255,0.5);letter-spacing:2px">${title}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div style="font-size:18px;font-weight:700;color:#00f0ff;text-shadow:0 0 8px rgba(0,240,255,0.5);letter-spacing:2px">${title}</div>
+        <button id="modalClose" style="background:transparent;border:none;color:#93A3BD;font-size:20px;cursor:pointer;line-height:1;padding:0 4px;">✕</button>
+      </div>
       <div style="font-size:13px;color:#cbd5e1;text-align:center;margin-bottom:14px;line-height:1.5">${msg}</div>
       ${isPrompt ? `<input type="${opts.input || 'text'}" id="modalInput" value="${def}" placeholder="${placeholder}" style="width:100%;padding:10px;font-size:14px;border-radius:10px;border:1.5px solid rgba(0,240,255,0.4);background:rgba(0,0,0,0.4);color:#fff;text-align:center;outline:none;box-sizing:border-box;font-weight:600;margin-bottom:14px">` : ''}
       <div style="display:flex;gap:10px;justify-content:center">
@@ -2597,6 +2611,7 @@ function showModal(opts) {
     }
     box.querySelector('#modalOk').onclick = () => close(isPrompt ? (input ? input.value : def) : true);
     if (opts.cancel !== false) box.querySelector('#modalCancel').onclick = () => close(isPrompt ? null : false);
+    box.querySelector('#modalClose').onclick = () => close(isPrompt ? null : false);
     if (isPrompt) {
       input && input.addEventListener('keydown', e => {
         if (e.key === 'Enter') close(input.value);
@@ -2614,7 +2629,7 @@ window.alert = function(msg) {
   console.warn('alert 被调用', msg);
 };
 
-// 点 + : 录入金额 → 有净值就算份额, 没净值就只存金额(份额留空), 整行标记红
+// ==================== 加/减按钮 ====================
 function addBuyByAmountDialog(i) {
   var f = state[i];
   var navHistory = (() => { try { return JSON.parse(localStorage.getItem('nav_history') || '[]'); } catch(e) { return []; }})();
@@ -2665,7 +2680,6 @@ function addBuyByAmountDialog(i) {
   });
 }
 
-// 点 − : 录入份额 → 有净值就算金额, 没净值就只存份额(金额留空), 整行标记绿, amount 留负号
 function subBuyBySharesDialog(i) {
   var f = state[i];
   var navHistory = (() => { try { return JSON.parse(localStorage.getItem('nav_history') || '[]'); } catch(e) { return []; }})();
